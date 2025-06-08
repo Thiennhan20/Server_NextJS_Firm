@@ -1,87 +1,38 @@
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
 const cors = require('cors');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
+const initializeWebSocket = require('./websocket');
+const authRoutes = require('./routes/auth');
+
 const app = express();
+
+// Middleware
 app.use(cors());
+app.use(express.json());
 
+// Connect to MongoDB
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('Connected to MongoDB'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
+// Routes
+app.use('/api/auth', authRoutes);
+
+// Tạo HTTP server
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: ["https://next-js-firm.vercel.app", "http://localhost:3000"],
-    methods: ["GET", "POST"],
-    credentials: true
-  },
-  pingTimeout: 60000, // Thời gian chờ ping
-  pingInterval: 25000, // Thời gian giữa các ping
-});
 
-// Lưu trữ thông tin người dùng đang online
-const onlineUsers = new Map();
+// Khởi tạo WebSocket
+initializeWebSocket(server);
 
-io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
-
-  // Xử lý khi người dùng tham gia chat
-  socket.on('user_join', (username) => {
-    onlineUsers.set(socket.id, username);
-    io.emit('user_list', Array.from(onlineUsers.values()));
-    io.emit('chat_message', {
-      type: 'system',
-      content: `${username} đã tham gia phòng chat`,
-      timestamp: new Date().toISOString()
-    });
-  });
-
-  // Xử lý tin nhắn chat
-  socket.on('chat_message', (message) => {
-    const username = onlineUsers.get(socket.id);
-    if (username) {
-      io.emit('chat_message', {
-        type: 'user',
-        username: username,
-        content: message,
-        timestamp: new Date().toISOString()
-      });
-    }
-  });
-
-  // Xử lý khi người dùng gửi hình ảnh
-  socket.on('image_message', (imageData) => {
-    const username = onlineUsers.get(socket.id);
-    if (username) {
-      io.emit('chat_message', {
-        type: 'image',
-        username: username,
-        content: imageData,
-        timestamp: new Date().toISOString()
-      });
-    }
-  });
-
-  // Xử lý khi người dùng ngắt kết nối
-  socket.on('disconnect', () => {
-    const username = onlineUsers.get(socket.id);
-    if (username) {
-      onlineUsers.delete(socket.id);
-      io.emit('user_list', Array.from(onlineUsers.values()));
-      io.emit('chat_message', {
-        type: 'system',
-        content: `${username} đã rời khỏi phòng chat`,
-        timestamp: new Date().toISOString()
-      });
-    }
-    console.log('User disconnected:', socket.id);
-  });
-});
-
+// Route cơ bản để kiểm tra server
 app.get('/', (req, res) => {
-  res.send('<h1>WebSocket Server is runningccccccccc</h1>');
+    res.send('<h1>WebSocket Server is running</h1>');
 });
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 }); 
