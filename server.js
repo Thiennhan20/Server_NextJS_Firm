@@ -13,7 +13,9 @@ const io = new Server(server, {
     origin: ["https://next-js-firm.vercel.app", "http://localhost:3000"],
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  pingTimeout: 60000, // Thời gian chờ ping
+  pingInterval: 25000, // Thời gian giữa các ping
 });
 
 // Lưu trữ thông tin người dùng đang online
