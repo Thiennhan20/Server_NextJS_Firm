@@ -53,8 +53,23 @@ router.post('/register', [
       password,
     });
     await user.save();
+    // Sau khi đăng ký, tạo token và trả về user giống login
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    // Lấy user mới nhất từ DB để có createdAt, updatedAt
+    const freshUser = await User.findById(user._id);
     return res.status(201).json({
-      message: 'Đăng ký thành công!'
+      token,
+      user: {
+        id: freshUser._id,
+        name: freshUser.name,
+        email: freshUser.email,
+        createdAt: freshUser.createdAt,
+        updatedAt: freshUser.updatedAt,
+      }
     });
   } catch (err) {
     console.error(err);
@@ -93,6 +108,8 @@ router.post('/login', [
         id: user._id,
         name: user.name,
         email: user.email,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
       }
     });
   } catch (err) {
