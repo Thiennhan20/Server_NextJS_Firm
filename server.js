@@ -32,6 +32,28 @@ app.get('/', (req, res) => {
     res.send('<h1>WebSocket Server is running</h1>');
 });
 
+// Lấy trạng thái của server
+app.get('/health', async (req, res) => {
+  const start = Date.now();
+  try {
+    // Thực hiện truy vấn đơn giản tới database
+    await mongoose.connection.db.admin().ping();
+    const dbLatency = Date.now() - start; // ms
+    res.status(200).json({
+      status: 'OK',
+      db: 'connected',
+      dbLatency: dbLatency + 'ms'
+    });
+  } catch (err) {
+    const dbLatency = Date.now() - start;
+    res.status(500).json({
+      status: 'ERROR',
+      db: 'disconnected',
+      dbLatency: dbLatency + 'ms'
+    });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
