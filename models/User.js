@@ -36,6 +36,13 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  watchlist: [
+    {
+      id: { type: Number, required: true },
+      title: { type: String, required: true },
+      poster_path: { type: String, required: true }
+    }
+  ],
   createdAt: {
     type: Date,
     default: Date.now

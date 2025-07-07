@@ -175,4 +175,55 @@ router.get('/verify-email', async (req, res) => {
   res.send('Xác thực email thành công! Bạn có thể đăng nhập.');
 });
 
+// ================= WATCHLIST ENDPOINTS =================
+// Thêm phim vào watchlist
+router.post('/watchlist', auth, async (req, res) => {
+  try {
+    const { id, title, poster_path } = req.body;
+    if (!id || !title || !poster_path) {
+      return res.status(400).json({ message: 'Thiếu thông tin phim' });
+    }
+    const user = await User.findById(req.user);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    // Kiểm tra trùng
+    if (user.watchlist.some(m => m.id === id)) {
+      return res.status(400).json({ message: 'Phim đã có trong watchlist' });
+    }
+    user.watchlist.push({ id, title, poster_path });
+    await user.save();
+    res.json({ message: 'Đã thêm vào watchlist', watchlist: user.watchlist });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Xóa phim khỏi watchlist
+router.delete('/watchlist', auth, async (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ message: 'Thiếu id phim' });
+    const user = await User.findById(req.user);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    user.watchlist = user.watchlist.filter(m => m.id !== id);
+    await user.save();
+    res.json({ message: 'Đã xóa khỏi watchlist', watchlist: user.watchlist });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Lấy toàn bộ watchlist của user
+router.get('/watchlist', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ watchlist: user.watchlist });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router; 
