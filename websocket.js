@@ -6,7 +6,7 @@ const onlineUsers = new Map();
 function initializeWebSocket(server) {
     const io = new Server(server, {
         cors: {
-            origin: ["https://next-js-firm.vercel.app", "http://localhost:3000"],
+            origin: ["https://moviesaw.vercel.app", "http://localhost:3000"],
             methods: ["GET", "POST"],
             credentials: true
         }
