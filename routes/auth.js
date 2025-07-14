@@ -239,6 +239,25 @@ router.post('/logout', auth, async (req, res) => {
   }
 });
 
+// Đăng xuất toàn bộ thiết bị
+router.post('/logout-all', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user);
+    if (user) {
+      user.tokens = [];
+      await user.save();
+    }
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    });
+    res.json({ message: 'Logged out from all devices' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Protected route example
 router.get('/profile', auth, async (req, res) => {
   try {
