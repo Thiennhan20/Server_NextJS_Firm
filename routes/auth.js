@@ -131,8 +131,8 @@ router.post('/register', [
     // Set HTTP-only cookie
     res.cookie('token', token, {
       httpOnly: true,
-      secure: false, // Set to false for local HTTP
-      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
     return res.status(201).json({
@@ -188,8 +188,8 @@ router.post('/login', [
     // Set HTTP-only cookie
     res.cookie('token', token, {
       httpOnly: true,
-      secure: false, // Để false khi chạy local HTTP
-      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
     res.json({
