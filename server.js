@@ -10,10 +10,15 @@ const authRoutes = require('./routes/auth');
 
 const app = express();
 
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://moviesaw.vercel.app'
+];
+
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:3000',
-  credentials: true
+  origin: allowedOrigins,
+  credentials: true, // nếu bạn dùng cookie
 }));
 app.use(express.json());
 app.use(cookieParser());
