@@ -2,7 +2,6 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
 const initializeWebSocket = require('./websocket');
@@ -10,18 +9,9 @@ const authRoutes = require('./routes/auth');
 
 const app = express();
 
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://moviesaw.vercel.app'
-];
-
 // Middleware
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true, // nếu bạn dùng cookie
-}));
+app.use(cors());
 app.use(express.json());
-app.use(cookieParser());
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
