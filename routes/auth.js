@@ -75,7 +75,10 @@ router.post('/register', [
           `
         };
         await transporter.sendMail(mailOptions);
-        return res.status(200).json({ message: 'Email này đã đăng ký nhưng chưa xác thực. Đã gửi lại email xác thực, vui lòng kiểm tra hộp thư.' });
+        return res.status(200).json({
+          message: 'This email has already been registered but not yet verified. A verification email has been resent, please check your inbox.'
+        });
+        
       }
       return res.status(400).json({ message: 'User already exists' });
     }
