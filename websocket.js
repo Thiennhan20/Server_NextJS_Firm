@@ -13,6 +13,8 @@ function initializeWebSocket(server) {
     });
 
     io.on('connection', (socket) => {
+        console.log('User connected:', socket.id);
+
         // Xử lý khi người dùng tham gia chat
         socket.on('user_join', (username) => {
             onlineUsers.set(socket.id, username);

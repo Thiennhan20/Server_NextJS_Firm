@@ -20,12 +20,8 @@ app.use(cookieParser());
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    // Remove all console.log and console.error lines
-  })
-  .catch(err => {
-    // Remove all console.log and console.error lines
-  });
+  .then(() => console.log('Connected to MongoDB'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
 // Routes
 app.use('/api/auth', authRoutes);
