@@ -168,7 +168,9 @@ router.post('/login', [
       httpOnly: true,
       secure: true, // Always true for cross-origin
       sameSite: 'none', // Allow cross-origin requests
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+      path: '/',
+      domain: undefined // Let browser set domain automatically
     });
     res.json({
       user: {
@@ -207,6 +209,7 @@ router.post('/logout', auth, async (req, res) => {
       secure: true, // Always true for cross-origin
       sameSite: 'none', // Allow cross-origin requests
       path: '/',
+      domain: undefined // Let browser set domain automatically
     });
 
     const expiresAt = new Date(decoded.exp * 1000); // Chuyển đổi timestamp Unix sang Date object
@@ -224,9 +227,34 @@ router.post('/logout', auth, async (req, res) => {
   }
 });
 
+// Test route to check cookies
+router.get('/test-cookies', (req, res) => {
+  console.log('Test cookies request:', {
+    'user-agent': req.headers['user-agent'],
+    'origin': req.headers['origin'],
+    'cookies': req.cookies,
+    'cookie-header': req.headers['cookie']
+  });
+  
+  res.json({
+    message: 'Cookie test',
+    cookies: req.cookies,
+    hasToken: !!req.cookies.token,
+    userAgent: req.headers['user-agent']
+  });
+});
+
 // Protected route example
 router.get('/profile', auth, async (req, res) => {
   try {
+    // Debug: Log request headers and cookies
+    console.log('Profile request - Headers:', {
+      'user-agent': req.headers['user-agent'],
+      'origin': req.headers['origin'],
+      'referer': req.headers['referer'],
+      'cookie': req.headers['cookie'] ? 'Present' : 'Missing'
+    });
+    
     // req.user chứa userId từ token đã được middleware auth đính kèm
     const userId = req.user.userId || req.user;
     const user = await User.findById(userId).select('-password -tokens -emailVerificationToken'); // Không trả về mật khẩu, tokens, emailVerificationToken
