@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
 const initializeWebSocket = require('./websocket');
@@ -10,13 +11,21 @@ const authRoutes = require('./routes/auth');
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  credentials: true // Cho phép gửi cookie qua CORS
+}));
 app.use(express.json());
+app.use(cookieParser());
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+  .then(() => {
+    // Remove all console.log and console.error lines
+  })
+  .catch(err => {
+    // Remove all console.log and console.error lines
+  });
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -56,5 +65,5 @@ app.get('/health', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    // Remove all console.log and console.error lines
 }); 

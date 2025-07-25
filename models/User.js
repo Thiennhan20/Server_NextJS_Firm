@@ -46,7 +46,10 @@ const userSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  tokens: [{
+    type: String
+  }]
 }, {
   timestamps: true
 });
