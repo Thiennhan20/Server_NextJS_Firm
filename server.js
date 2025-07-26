@@ -12,7 +12,11 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: [
+    process.env.CLIENT_URL || 'http://localhost:3000',
+    'https://moviesaw.vercel.app',
+    'https://*.vercel.app' // Allow all vercel.app subdomains
+  ],
   credentials: true // Cho phép gửi cookie qua CORS
 }));
 app.use(express.json());

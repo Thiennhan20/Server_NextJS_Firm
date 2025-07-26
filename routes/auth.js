@@ -166,8 +166,9 @@ router.post('/login', [
     // Set cookie HTTP-only
     res.cookie('token', token, {
       httpOnly: true,
-      secure: false, // Always true for cross-origin
+      secure: true, // Must be true for cross-origin HTTPS
       sameSite: 'none', // Allow cross-origin requests
+      domain: process.env.COOKIE_DOMAIN || '.vercel.app', // Set domain for subdomain sharing
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
     });
     res.json({
@@ -204,8 +205,9 @@ router.post('/logout', auth, async (req, res) => {
     // Xóa cookie token
     res.clearCookie('token', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: true, // Must be true for cross-origin HTTPS
+      sameSite: 'none', // Must match the setting when creating cookie
+      domain: process.env.COOKIE_DOMAIN || '.vercel.app', // Must match the setting when creating cookie
       path: '/',
     });
 
