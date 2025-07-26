@@ -3,8 +3,17 @@ const BlacklistedToken = require('../models/BlacklistedToken');
 
 const auth = async (req, res, next) => {
   try {
-    // Lấy token từ cookie
-    const token = req.cookies && req.cookies.token;
+    // Try to get token from cookie first
+    let token = req.cookies && req.cookies.token;
+    
+    // If no cookie token, try Authorization header (for Safari)
+    if (!token && req.headers.authorization) {
+      const authHeader = req.headers.authorization;
+      if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+    
     if (!token) {
       return res.status(401).json({ message: 'No authentication token found' });
     }

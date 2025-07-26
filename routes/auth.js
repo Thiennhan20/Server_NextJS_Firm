@@ -163,27 +163,13 @@ router.post('/login', [
     }
     user.tokens.push(token);
     await user.save();
-    // Set cookie HTTP-only - iOS Safari compatible
-    const cookieOptions = {
+    // Set cookie HTTP-only
+    res.cookie('token', token, {
       httpOnly: true,
-      secure: true, // Always true for cross-origin
+      secure: false, // Always true for cross-origin
       sameSite: 'none', // Allow cross-origin requests
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
-      path: '/',
-      domain: undefined // Let browser set domain automatically
-    };
-
-    // iOS Safari specific adjustments
-    const userAgent = req.headers['user-agent'] || '';
-    if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
-      // For Safari, try without sameSite first
-      res.cookie('token', token, {
-        ...cookieOptions,
-        sameSite: undefined
-      });
-    } else {
-      res.cookie('token', token, cookieOptions);
-    }
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
+    });
     res.json({
       user: {
         id: user._id,
@@ -215,26 +201,13 @@ router.post('/logout', auth, async (req, res) => {
       await user.save();
     }
 
-    // Xóa cookie token - iOS Safari compatible
-    const clearCookieOptions = {
+    // Xóa cookie token
+    res.clearCookie('token', {
       httpOnly: true,
-      secure: true, // Always true for cross-origin
-      sameSite: 'none', // Allow cross-origin requests
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
       path: '/',
-      domain: undefined // Let browser set domain automatically
-    };
-
-    // iOS Safari specific adjustments
-    const userAgent = req.headers['user-agent'] || '';
-    if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
-      // For Safari, try without sameSite first
-      res.clearCookie('token', {
-        ...clearCookieOptions,
-        sameSite: undefined
-      });
-    } else {
-      res.clearCookie('token', clearCookieOptions);
-    }
+    });
 
     const expiresAt = new Date(decoded.exp * 1000); // Chuyển đổi timestamp Unix sang Date object
 
@@ -251,88 +224,9 @@ router.post('/logout', auth, async (req, res) => {
   }
 });
 
-// iOS Safari specific test route
-router.get('/safari-test', (req, res) => {
-  const userAgent = req.headers['user-agent'] || '';
-  const isSafari = userAgent.includes('Safari') && !userAgent.includes('Chrome');
-  const isIOS = userAgent.includes('iPhone') || userAgent.includes('iPad') || userAgent.includes('iPod');
-  
-  console.log('Safari test request:', {
-    'user-agent': userAgent,
-    'origin': req.headers['origin'],
-    'isSafari': isSafari,
-    'isIOS': isIOS,
-    'cookies': req.cookies,
-    'cookie-header': req.headers['cookie'],
-    timestamp: new Date().toISOString()
-  });
-  
-  // Test setting a simple cookie
-  res.cookie('safari-test', 'test-value', {
-    httpOnly: false, // Allow JavaScript access for testing
-    secure: true,
-    sameSite: isSafari ? undefined : 'none',
-    maxAge: 60 * 1000, // 1 minute
-    path: '/'
-  });
-  
-  res.json({
-    message: 'Safari test',
-    isSafari,
-    isIOS,
-    userAgent: userAgent,
-    cookies: req.cookies,
-    hasToken: !!req.cookies.token,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Simple ping route for testing
-router.get('/ping', (req, res) => {
-  console.log('Ping request received:', {
-    'user-agent': req.headers['user-agent'],
-    'origin': req.headers['origin'],
-    'x-device-type': req.headers['x-device-type'],
-    'cookies': req.cookies,
-    timestamp: new Date().toISOString()
-  });
-  
-  res.json({
-    message: 'pong',
-    timestamp: new Date().toISOString(),
-    deviceType: req.headers['x-device-type'],
-    userAgent: req.headers['user-agent']
-  });
-});
-
-// Test route to check cookies
-router.get('/test-cookies', (req, res) => {
-  console.log('Test cookies request:', {
-    'user-agent': req.headers['user-agent'],
-    'origin': req.headers['origin'],
-    'cookies': req.cookies,
-    'cookie-header': req.headers['cookie']
-  });
-  
-  res.json({
-    message: 'Cookie test',
-    cookies: req.cookies,
-    hasToken: !!req.cookies.token,
-    userAgent: req.headers['user-agent']
-  });
-});
-
 // Protected route example
 router.get('/profile', auth, async (req, res) => {
   try {
-    // Debug: Log request headers and cookies
-    console.log('Profile request - Headers:', {
-      'user-agent': req.headers['user-agent'],
-      'origin': req.headers['origin'],
-      'referer': req.headers['referer'],
-      'cookie': req.headers['cookie'] ? 'Present' : 'Missing'
-    });
-    
     // req.user chứa userId từ token đã được middleware auth đính kèm
     const userId = req.user.userId || req.user;
     const user = await User.findById(userId).select('-password -tokens -emailVerificationToken'); // Không trả về mật khẩu, tokens, emailVerificationToken
