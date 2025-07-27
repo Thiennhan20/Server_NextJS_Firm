@@ -2,7 +2,6 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
 const initializeWebSocket = require('./websocket');
@@ -11,16 +10,8 @@ const authRoutes = require('./routes/auth');
 const app = express();
 
 // Middleware
-app.use(cors({
-  origin: [
-    process.env.CLIENT_URL || 'http://localhost:3000',
-    'https://moviesaw.vercel.app',
-    'https://*.vercel.app' // Allow all vercel.app subdomains
-  ],
-  credentials: true // Cho phép gửi cookie qua CORS
-}));
+app.use(cors());
 app.use(express.json());
-app.use(cookieParser());
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
@@ -65,5 +56,5 @@ app.get('/health', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-    // Remove all console.log and console.error lines
+    console.log(`Server is running on port ${PORT}`);
 }); 

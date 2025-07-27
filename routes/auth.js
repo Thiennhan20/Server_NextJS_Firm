@@ -8,7 +8,6 @@ const BlacklistedToken = require('../models/BlacklistedToken');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const MAX_TOKENS = 2;
 
 // Middleware to validate request
 const validateRequest = (req, res, next) => {
@@ -156,22 +155,8 @@ router.post('/login', [
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
-    // Push token vào mảng tokens và lưu user
-    user.tokens = user.tokens || [];
-    if (user.tokens.length >= MAX_TOKENS) {
-      user.tokens.shift(); // Xóa token cũ nhất
-    }
-    user.tokens.push(token);
-    await user.save();
-    // Set cookie HTTP-only
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: true, // Must be true for cross-origin HTTPS
-      sameSite: 'none', // Allow cross-origin requests
-      domain: process.env.COOKIE_DOMAIN || '.vercel.app', // Set domain for subdomain sharing
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
-    });
     res.json({
+      token,
       user: {
         id: user._id,
         name: user.name,
@@ -195,22 +180,6 @@ router.post('/logout', auth, async (req, res) => {
       return res.status(400).json({ message: 'Invalid token provided' });
     }
 
-    // Xóa token khỏi mảng tokens của user
-    const user = await User.findById(req.user.userId);
-    if (user && user.tokens) {
-      user.tokens = user.tokens.filter(t => t !== token);
-      await user.save();
-    }
-
-    // Xóa cookie token
-    res.clearCookie('token', {
-      httpOnly: true,
-      secure: true, // Must be true for cross-origin HTTPS
-      sameSite: 'none', // Must match the setting when creating cookie
-      domain: process.env.COOKIE_DOMAIN || '.vercel.app', // Must match the setting when creating cookie
-      path: '/',
-    });
-
     const expiresAt = new Date(decoded.exp * 1000); // Chuyển đổi timestamp Unix sang Date object
 
     const blacklistedToken = new BlacklistedToken({
@@ -230,8 +199,7 @@ router.post('/logout', auth, async (req, res) => {
 router.get('/profile', auth, async (req, res) => {
   try {
     // req.user chứa userId từ token đã được middleware auth đính kèm
-    const userId = req.user.userId || req.user;
-    const user = await User.findById(userId).select('-password -tokens -emailVerificationToken'); // Không trả về mật khẩu, tokens, emailVerificationToken
+    const user = await User.findById(req.user).select('-password'); // Không trả về mật khẩu
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -289,7 +257,7 @@ router.post('/watchlist', auth, async (req, res) => {
     if (!id || !title || !poster_path) {
       return res.status(400).json({ message: 'Thiếu thông tin phim' });
     }
-    const user = await User.findById(req.user.userId);
+    const user = await User.findById(req.user);
     if (!user) return res.status(404).json({ message: 'User not found' });
     // Kiểm tra trùng
     if (user.watchlist.some(m => m.id === id)) {
@@ -308,7 +276,7 @@ router.delete('/watchlist', auth, async (req, res) => {
   try {
     const { id } = req.body;
     if (!id) return res.status(400).json({ message: 'Thiếu id phim' });
-    const user = await User.findById(req.user.userId);
+    const user = await User.findById(req.user);
     if (!user) return res.status(404).json({ message: 'User not found' });
     user.watchlist = user.watchlist.filter(m => m.id !== id);
     await user.save();
@@ -321,56 +289,12 @@ router.delete('/watchlist', auth, async (req, res) => {
 // Lấy toàn bộ watchlist của user
 router.get('/watchlist', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId);
+    const user = await User.findById(req.user);
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json({ watchlist: user.watchlist });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
-});
-
-// Lấy danh sách thiết bị (token) đang đăng nhập
-router.get('/devices', auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId || req.user);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-    // Trả về danh sách token (có thể mở rộng thêm device info nếu lưu)
-    res.json({ tokens: user.tokens || [] });
-  } catch (err) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Logout một thiết bị cụ thể (bằng token)
-router.post('/logout-device', auth, async (req, res) => {
-  try {
-    const { token: targetToken } = req.body;
-    if (!targetToken) return res.status(400).json({ message: 'Missing token to logout' });
-    const user = await User.findById(req.user.userId || req.user);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-    if (!user.tokens.includes(targetToken)) {
-      return res.status(400).json({ message: 'Token not found in your devices' });
-    }
-    user.tokens = user.tokens.filter(t => t !== targetToken);
-    await user.save();
-    // Đưa token vào blacklist để không dùng lại được nữa
-    const decoded = jwt.decode(targetToken);
-    if (decoded && decoded.exp) {
-      const expiresAt = new Date(decoded.exp * 1000);
-      const blacklistedToken = new BlacklistedToken({ token: targetToken, expiresAt });
-      await blacklistedToken.save();
-    }
-    res.json({ message: 'Device logged out successfully' });
-  } catch (err) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Kiểm tra quyền admin
-const admin = require('../middleware/admin');
-
-router.get('/admin-only', auth, admin, async (req, res) => {
-  res.json({ message: 'You are admin', user: req.user });
 });
 
 module.exports = router; 

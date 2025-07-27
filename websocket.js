@@ -64,6 +64,7 @@ function initializeWebSocket(server) {
                     timestamp: new Date().toISOString()
                 });
             }
+            console.log('User disconnected:', socket.id);
         });
     });
 
