@@ -6,6 +6,7 @@ require('dotenv').config();
 
 const initializeWebSocket = require('./websocket');
 const authRoutes = require('./routes/auth');
+const commentRoutes = require('./routes/comments');
 
 const app = express();
 
@@ -20,6 +21,7 @@ mongoose.connect(process.env.MONGODB_URI)
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/comments', commentRoutes);
 
 // Tạo HTTP server
 const server = http.createServer(app);

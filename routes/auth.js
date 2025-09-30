@@ -155,6 +155,7 @@ router.post('/login', [
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
+    
     res.json({
       token,
       user: {
@@ -292,6 +293,72 @@ router.get('/watchlist', auth, async (req, res) => {
     const user = await User.findById(req.user);
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json({ watchlist: user.watchlist });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ================= ADMIN API ENDPOINTS =================
+// Lấy tất cả users (cho Django Admin)
+router.get('/users', async (req, res) => {
+  try {
+    const users = await User.find({}).select('-password -emailVerificationToken');
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Lấy user theo ID
+router.get('/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('-password -emailVerificationToken');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Cập nhật user theo ID
+router.put('/users/:id', async (req, res) => {
+  try {
+    const { name, email, avatar, isEmailVerified, watchlist } = req.body;
+    
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Cập nhật thông tin
+    if (name) user.name = name;
+    if (email) user.email = email;
+    if (avatar !== undefined) user.avatar = avatar;
+    if (isEmailVerified !== undefined) user.isEmailVerified = isEmailVerified;
+    if (watchlist !== undefined) user.watchlist = watchlist;
+    
+    await user.save();
+    
+    // Trả về user đã cập nhật (không bao gồm password)
+    const updatedUser = await User.findById(req.params.id).select('-password -emailVerificationToken');
+    res.json(updatedUser);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Xóa user theo ID
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ message: 'User deleted successfully' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
