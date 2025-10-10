@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 const BlacklistedToken = require('../models/BlacklistedToken');
+const AuthIdentity = require('../models/AuthIdentity');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
@@ -167,6 +168,141 @@ router.post('/login', [
       }
     });
   } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Google login / link route (server verifies Google ID token)
+router.post('/google-login', [
+  body('credential').notEmpty().withMessage('Google credential (ID token) is required'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { credential } = req.body;
+
+    // Verify Google ID token
+    const { OAuth2Client } = require('google-auth-library');
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    const ticket = await client.verifyIdToken({ idToken: credential, audience: process.env.GOOGLE_CLIENT_ID });
+    const payload = ticket.getPayload();
+    if (!payload) return res.status(401).json({ message: 'Invalid Google token' });
+
+    const email = payload.email;
+    const sub = payload.sub;
+    const name = payload.name;
+    const avatar = payload.picture;
+    const email_verified = payload.email_verified;
+
+    // If there's already an identity with this providerUserId, log that user in
+    let existingIdentity = await AuthIdentity.findOne({ provider: 'google', providerUserId: sub });
+    if (existingIdentity) {
+      const user = await User.findById(existingIdentity.userId);
+      if (!user) {
+        return res.status(400).json({ message: 'Linked user not found' });
+      }
+      const token = jwt.sign(
+        { userId: user._id },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+      return res.json({
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        }
+      });
+    }
+
+    // No identity yet: try to find by email
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // Create a user with a random password to satisfy schema
+      const randomPassword = crypto.randomBytes(24).toString('hex');
+      user = new User({
+        name: name || email,
+        email,
+        password: randomPassword,
+        avatar: avatar || '',
+        isEmailVerified: !!email_verified,
+        emailVerificationToken: ''
+      });
+      await user.save();
+
+      await AuthIdentity.create({
+        userId: user._id,
+        provider: 'google',
+        providerUserId: sub
+      });
+
+      const token = jwt.sign(
+        { userId: user._id },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+      return res.status(201).json({
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        }
+      });
+    }
+
+    // User exists but no Google identity yet
+    const canAutoLink = email_verified === true || email_verified === 'true';
+    if (!canAutoLink) {
+      return res.status(409).json({
+        message: 'Email is not verified by Google. Please verify email or login with password to link accounts.'
+      });
+    }
+
+    // Ensure we persist updated name/avatar from Google when linking existing account
+    if (name && user.name !== name) {
+      user.name = name;
+    }
+    if (avatar && user.avatar !== avatar) {
+      user.avatar = avatar;
+    }
+    await user.save();
+
+    await AuthIdentity.create({
+      userId: user._id,
+      provider: 'google',
+      providerUserId: sub
+    });
+
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    return res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      }
+    });
+  } catch (err) {
+    if (err && err.code === 11000) {
+      // Unique index conflict for identity
+      return res.status(409).json({ message: 'This Google account is already linked to another user.' });
+    }
     res.status(500).json({ message: 'Server error' });
   }
 });
