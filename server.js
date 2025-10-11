@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const helmet = require('helmet');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
@@ -9,15 +10,50 @@ const authRoutes = require('./routes/auth');
 const commentRoutes = require('./routes/comments');
 
 const app = express();
+// Security middleware
+app.use(helmet({
+  crossOriginEmbedderPolicy: false, // Tắt để tương thích Safari
+  crossOriginOpenerPolicy: false,
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      defaultSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      frameSrc: ["'self'", "https://vidsrc.icu", "https://www.youtube.com"],
+    },
+  },
+}));
+app.disable('x-powered-by');
 
-// Middleware
-app.use(cors());
+// CORS configuration
+const corsOptions = {
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// MongoDB connection
+mongoose.connect(process.env.MONGODB_URI, {
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+})
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch(err => {
+    console.error('❌ MongoDB connection error:', err);
+    process.exit(1);
+  });
+
+// MongoDB event handlers
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️ MongoDB disconnected. Attempting to reconnect...');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ MongoDB reconnected');
+});
 
 // Routes
 app.use('/api/auth', authRoutes);

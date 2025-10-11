@@ -5,10 +5,10 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 const BlacklistedToken = require('../models/BlacklistedToken');
-const AuthIdentity = require('../models/AuthIdentity');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const axios = require('axios');
 
 // Middleware to validate request
 const validateRequest = (req, res, next) => {
@@ -45,8 +45,24 @@ router.post('/register', [
       return res.status(400).json({ errors: errors.array() });
     }
     const { name, email, password } = req.body;
-    let user = await User.findOne({ email });
+    
+    // Check for existing email user (ONLY email auth type)
+    let user = await User.findOne({ 
+      email, 
+      $or: [
+        { authType: 'email' },
+        { authType: { $exists: false } } // Legacy users
+      ]
+    });
+    
     if (user) {
+      // If legacy user, update to email auth type
+      if (!user.authType) {
+        user.authType = 'email';
+        await user.save();
+      }
+      
+      // Email user already exists - check verification status
       if (!user.isEmailVerified) {
         // Gửi lại email xác thực
         const emailVerificationToken = crypto.randomBytes(32).toString('hex');
@@ -64,14 +80,58 @@ router.post('/register', [
         const mailOptions = {
           from: process.env.EMAIL_USER,
           to: email,
-          subject: 'Xác thực lại email tài khoản Movie 3D',
+          subject: 'Entertainment World Account Email Verification Resend',
           html: `
-            <div style="max-width:480px;width:95vw;margin:32px auto;padding:6vw 4vw 32px 4vw;background:linear-gradient(135deg,#181824 80%,#ffd600 100%);border-radius:24px;box-shadow:0 8px 32px #0005;font-family:'Segoe UI',sans-serif;text-align:center;box-sizing:border-box;">
-              <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='height:48px;max-width:80px;width:30vw;margin-bottom:20px;filter:drop-shadow(0 2px 8px #ffd60099);'/>
-              <h2 style="color:#ffd600;margin-bottom:12px;font-size:clamp(1.2rem,4vw,2rem);font-weight:800;">Xin chào ${user.name}!</h2>
-              <p style="color:#fff;font-size:clamp(1rem,2.5vw,1.2rem);margin-bottom:20px;">Email này đã đăng ký nhưng chưa xác thực.<br>Vui lòng xác thực email bằng cách nhấn vào nút bên dưới:</p>
-              <a href="${verifyUrl}" style="display:inline-block;padding:14px 8vw;background:#ffd600;color:#222;font-weight:bold;font-size:clamp(1rem,2.5vw,1.3rem);border-radius:12px;text-decoration:none;margin:20px 0 12px 0;box-shadow:0 4px 16px #ffd60080;letter-spacing:1px;min-width:120px;">Xác thực Email</a>
-              <p style="color:#fff;font-size:clamp(0.9rem,2vw,1.1rem);margin-top:20px;word-break:break-all;">Nếu nút không hoạt động, hãy copy link sau và dán vào trình duyệt:<br><span style='color:#ffd600;'>${verifyUrl}</span></p>
+            <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+              <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
+                
+                <!-- Content wrapper -->
+                <div style="position:relative;z-index:1;">
+                  
+                  <!-- Icon -->
+                  <div style="width:60px;height:60px;margin:0 auto 12px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
+                    <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='width:30px;height:30px;filter:brightness(0) invert(1);'/>
+                  </div>
+                  
+                  <!-- Heading -->
+                  <h1 style="color:#ffffff;margin:0 0 12px 0;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
+                    Welcome <span style="color:#ffd700; text-shadow: 0 0 8px rgba(255, 215, 0, 0.8), 0 0 15px rgba(255, 215, 0, 0.6);">${name}</span>!
+                  </h1>
+                  
+                  <!-- Description -->
+                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
+                    Thank you for registering with Entertainment World!
+                  </p>
+                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
+                    Please click the button below to verify your email address to complete your registration and start exploring.
+                  </p>
+
+                  <!-- Arrows -->
+                  <div style="margin-bottom: 20px; color: #ffffff;">
+                    <span style="display: block; margin: 0 auto;">▼</span>
+                    <span style="display: block; margin: 0 auto;">▼</span>
+                  </div>
+                  
+                  <!-- Button -->
+                  <a href="${verifyUrl}" style="display:inline-block;padding:12px 32px;background:#ffffff;color:#1e40af;font-weight:700;font-size:14px;border:2px solid #1e40af;border-radius:8px;text-decoration:none;box-shadow:0 6px 20px rgba(30, 64, 175, 0.4), inset 0 0 8px rgba(30, 64, 175, 0.3);transition:all 0.3s ease;letter-spacing:0.5px;">
+                    Verify Email Address
+                  </a>
+                  
+                  <!-- Divider -->
+                  <div style="height:1px;background:rgba(255,255,255,0.2);margin:16px auto;max-width:60%;"></div>
+                  
+                  <!-- Help text -->
+                  <p style="color:rgba(255,255,255,0.7);font-size:12px;margin:0;">
+                    Need help? Contact us or try signing up again.
+                  </p>
+                  
+                </div>
+              </div>
+              
+              <!-- Footer -->
+              <p style="text-align:center;color:#888;font-size:11px;margin-top:16px;line-height:1.4;">
+                This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
+              </p>
             </div>
           `
         };
@@ -81,14 +141,17 @@ router.post('/register', [
         });
         
       }
+      // Email user already exists and verified - return error
       return res.status(400).json({ message: 'User already exists' });
     }
-    // Sinh token xác thực email
+    
+    // No email user found - REGISTER (create new)
     const emailVerificationToken = crypto.randomBytes(32).toString('hex');
     user = new User({
       name,
       email,
       password,
+      authType: 'email',
       emailVerificationToken,
       isEmailVerified: false
     });
@@ -107,21 +170,65 @@ router.post('/register', [
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
-      subject: 'Xác thực email tài khoản Movie 3D',
+      subject: 'Entertainment World Account Email Verification',
       html: `
-        <div style="max-width:480px;width:95vw;margin:32px auto;padding:6vw 4vw 32px 4vw;background:linear-gradient(135deg,#181824 80%,#ffd600 100%);border-radius:24px;box-shadow:0 8px 32px #0005;font-family:'Segoe UI',sans-serif;text-align:center;box-sizing:border-box;">
-          <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='height:48px;max-width:80px;width:30vw;margin-bottom:20px;filter:drop-shadow(0 2px 8px #ffd60099);'/>
-          <h2 style="color:#ffd600;margin-bottom:12px;font-size:clamp(1.2rem,4vw,2rem);font-weight:800;">Chào mừng ${name}!</h2>
-          <p style="color:#fff;font-size:clamp(1rem,2.5vw,1.2rem);margin-bottom:20px;">Vui lòng xác thực email bằng cách nhấn vào nút bên dưới:</p>
-          <a href="${verifyUrl}" style="display:inline-block;padding:14px 8vw;background:#ffd600;color:#222;font-weight:bold;font-size:clamp(1rem,2.5vw,1.3rem);border-radius:12px;text-decoration:none;margin:20px 0 12px 0;box-shadow:0 4px 16px #ffd60080;letter-spacing:1px;min-width:120px;">Xác thực Email</a>
-          <p style="color:#fff;font-size:clamp(0.9rem,2vw,1.1rem);margin-top:20px;word-break:break-all;">Nếu nút không hoạt động, hãy copy link sau và dán vào trình duyệt:<br><span style='color:#ffd600;'>${verifyUrl}</span></p>
+        <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+          <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
+            
+            <!-- Content wrapper -->
+            <div style="position:relative;z-index:1;">
+              
+              <!-- Icon -->
+              <div style="width:60px;height:60px;margin:0 auto 12px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
+                <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='width:30px;height:30px;filter:brightness(0) invert(1);'/>
+              </div>
+              
+              <!-- Heading -->
+              <h1 style="color:#ffffff;margin:0 0 12px 0;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
+                Welcome <span style="color:#ffd700; text-shadow: 0 0 8px rgba(255, 215, 0, 0.8), 0 0 15px rgba(255, 215, 0, 0.6);">${name}</span>!
+              </h1>
+              
+              <!-- Description -->
+              <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
+                Thank you for registering with Entertainment World!
+              </p>
+              <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
+                Please click the button below to verify your email address to complete your registration and start exploring.
+              </p>
+
+              <!-- Arrows -->
+              <div style="margin-bottom: 20px; color: #ffffff;">
+                <span style="display: block; margin: 0 auto;">▼</span>
+                <span style="display: block; margin: 0 auto;">▼</span>
+              </div>
+              
+              <!-- Button -->
+              <a href="${verifyUrl}" style="display:inline-block;padding:12px 32px;background:#ffffff;color:#1e40af;font-weight:700;font-size:14px;border:2px solid #1e40af;border-radius:8px;text-decoration:none;box-shadow:0 6px 20px rgba(30, 64, 175, 0.4), inset 0 0 8px rgba(30, 64, 175, 0.3);transition:all 0.3s ease;letter-spacing:0.5px;">
+                Verify Email Address
+              </a>
+              
+              <!-- Divider -->
+              <div style="height:1px;background:rgba(255,255,255,0.2);margin:16px auto;max-width:60%;"></div>
+              
+              <!-- Help text -->
+              <p style="color:rgba(255,255,255,0.7);font-size:12px;margin:0;">
+                Need help? Contact us or try signing up again.
+              </p>
+              
+            </div>
+          </div>
+          
+          <!-- Footer -->
+          <p style="text-align:center;color:#888;font-size:11px;margin-top:16px;line-height:1.4;">
+            This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
+          </p>
         </div>
       `
     };
     await transporter.sendMail(mailOptions);
 
     return res.status(201).json({
-      message: 'Đăng ký thành công! Vui lòng kiểm tra email để xác thực tài khoản.',
+      message: 'Registration successful! Please check your email to verify your account.',
     });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -139,12 +246,27 @@ router.post('/login', [
       return res.status(400).json({ errors: errors.array() });
     }
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    
+    // Check for existing email user (including legacy users without authType)
+    const user = await User.findOne({ 
+      email, 
+      $or: [
+        { authType: 'email' },
+        { authType: { $exists: false } } // Legacy users
+      ]
+    });
+    
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
+    
+    // If legacy user, update to email auth type
+    if (!user.authType) {
+      user.authType = 'email';
+      await user.save();
+    }
     if (!user.isEmailVerified) {
-      return res.status(403).json({ message: 'Tài khoản chưa xác thực email, vui lòng kiểm tra email để xác thực.' });
+      return res.status(403).json({ message: 'Account email not verified, please check your email to verify.' });
     }
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
@@ -197,13 +319,21 @@ router.post('/google-login', [
     const avatar = payload.picture;
     const email_verified = payload.email_verified;
 
-    // If there's already an identity with this providerUserId, log that user in
-    let existingIdentity = await AuthIdentity.findOne({ provider: 'google', providerUserId: sub });
-    if (existingIdentity) {
-      const user = await User.findById(existingIdentity.userId);
-      if (!user) {
-        return res.status(400).json({ message: 'Linked user not found' });
+    // Check if Google user already exists (email + authType: 'google')
+    let user = await User.findOne({ email, authType: 'google' });
+    
+    if (user) {
+      // Google user exists - LOGIN
+      
+      // Update user info if needed
+      if (name && user.name !== name) {
+        user.name = name;
       }
+      if (avatar && user.avatar !== avatar) {
+        user.avatar = avatar;
+      }
+      await user.save();
+
       const token = jwt.sign(
         { userId: user._id },
         process.env.JWT_SECRET,
@@ -221,34 +351,98 @@ router.post('/google-login', [
       });
     }
 
-    // No identity yet: try to find by email
-    let user = await User.findOne({ email });
-
-    if (!user) {
-      // Create a user with a random password to satisfy schema
-      const randomPassword = crypto.randomBytes(24).toString('hex');
-      user = new User({
+    // Google user doesn't exist - REGISTER (create new)
+    user = await User.findOneAndUpdate(
+      { email, authType: 'google' },
+      {
         name: name || email,
         email,
-        password: randomPassword,
+        authType: 'google',
+        providerId: sub,
         avatar: avatar || '',
         isEmailVerified: !!email_verified,
         emailVerificationToken: ''
-      });
-      await user.save();
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
-      await AuthIdentity.create({
-        userId: user._id,
-        provider: 'google',
-        providerUserId: sub
-      });
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    return res.status(201).json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      }
+    });
+  } catch (err) {
+    console.error('Google login error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Facebook login / link route
+router.post('/facebook-login', [
+  body('accessToken').notEmpty().withMessage('Facebook access token is required'),
+  body('userID').notEmpty().withMessage('Facebook user ID is required'),
+], async (req, res) => {
+  try {
+    
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { accessToken, userID } = req.body;
+
+    // Verify Facebook access token
+    const facebookResponse = await axios.get(
+      `https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${accessToken}`
+    );
+    
+    const facebookUser = facebookResponse.data;
+    
+    if (!facebookUser || facebookUser.id !== userID) {
+      return res.status(401).json({ message: 'Invalid Facebook token' });
+    }
+
+    const email = facebookUser.email;
+    const name = facebookUser.name;
+    const avatar = facebookUser.picture?.data?.url || '';
+    const facebookId = facebookUser.id;
+
+    // Check if email is provided
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required for Facebook login. Please ensure your Facebook account has an email address.' });
+    }
+
+    // Check if Facebook user already exists (email + authType: 'facebook')
+    let user = await User.findOne({ email, authType: 'facebook' });
+    
+    if (user) {
+      // Facebook user exists - LOGIN
+      
+      // Update user info if needed
+      if (name && user.name !== name) {
+        user.name = name;
+      }
+      if (avatar && user.avatar !== avatar) {
+        user.avatar = avatar;
+      }
+      await user.save();
 
       const token = jwt.sign(
         { userId: user._id },
         process.env.JWT_SECRET,
         { expiresIn: '7d' }
       );
-      return res.status(201).json({
+      return res.json({
         token,
         user: {
           id: user._id,
@@ -260,35 +454,27 @@ router.post('/google-login', [
       });
     }
 
-    // User exists but no Google identity yet
-    const canAutoLink = email_verified === true || email_verified === 'true';
-    if (!canAutoLink) {
-      return res.status(409).json({
-        message: 'Email is not verified by Google. Please verify email or login with password to link accounts.'
-      });
-    }
-
-    // Ensure we persist updated name/avatar from Google when linking existing account
-    if (name && user.name !== name) {
-      user.name = name;
-    }
-    if (avatar && user.avatar !== avatar) {
-      user.avatar = avatar;
-    }
-    await user.save();
-
-    await AuthIdentity.create({
-      userId: user._id,
-      provider: 'google',
-      providerUserId: sub
-    });
+    // Facebook user doesn't exist - REGISTER (create new)
+    user = await User.findOneAndUpdate(
+      { email, authType: 'facebook' },
+      {
+        name: name || email,
+        email,
+        authType: 'facebook',
+        providerId: facebookId,
+        avatar: avatar || '',
+        isEmailVerified: true, // Facebook emails are pre-verified
+        emailVerificationToken: ''
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     const token = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
-    return res.json({
+    return res.status(201).json({
       token,
       user: {
         id: user._id,
@@ -299,11 +485,16 @@ router.post('/google-login', [
       }
     });
   } catch (err) {
-    if (err && err.code === 11000) {
-      // Unique index conflict for identity
-      return res.status(409).json({ message: 'This Google account is already linked to another user.' });
-    }
-    res.status(500).json({ message: 'Server error' });
+    console.error('Facebook login error:', err);
+    console.error('Error details:', {
+      message: err.message,
+      stack: err.stack,
+      response: err.response?.data
+    });
+    res.status(500).json({ 
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    });
   }
 });
 
@@ -351,25 +542,37 @@ router.get('/profile', auth, async (req, res) => {
 router.get('/verify-email', async (req, res) => {
   const { token, email } = req.query;
   if (!token || !email) {
-    return res.status(400).json({ message: 'Thiếu token hoặc email' });
+    return res.status(400).json({ message: 'Missing token or email' });
   }
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ 
+    email, 
+    $or: [
+      { authType: 'email' },
+      { authType: { $exists: false } } // Legacy users
+    ]
+  });
   if (!user) {
-    return res.status(400).json({ message: 'Token không hợp lệ hoặc đã hết hạn' });
+    return res.status(400).json({ message: 'Invalid or expired token' });
+  }
+  
+  // If legacy user, update to email auth type
+  if (!user.authType) {
+    user.authType = 'email';
+    await user.save();
   }
   // Nếu đã xác thực rồi, báo lỗi
   if (user.isEmailVerified) {
-    return res.status(400).json({ message: 'Tài khoản đã được xác thực hoặc link đã hết hạn.' });
+    return res.status(400).json({ message: 'Account already verified or link expired.' });
   }
   // Nếu chưa xác thực, kiểm tra token
   if (user.emailVerificationToken !== token) {
-    return res.status(400).json({ message: 'Token không hợp lệ hoặc đã hết hạn' });
+    return res.status(400).json({ message: 'Invalid or expired token' });
   }
   user.isEmailVerified = true;
   user.emailVerificationToken = '';
   await user.save();
   return res.json({
-    message: 'Xác thực email thành công! Bạn có thể đăng nhập.'
+    message: 'Email verification successful! You can now login.'
   });
 });
 
@@ -377,11 +580,17 @@ router.get('/verify-email', async (req, res) => {
 router.get('/check-email-verified', async (req, res) => {
   const { email } = req.query;
   if (!email) {
-    return res.status(400).json({ message: 'Thiếu email' });
+    return res.status(400).json({ message: 'Missing email' });
   }
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ 
+    email, 
+    $or: [
+      { authType: 'email' },
+      { authType: { $exists: false } } // Legacy users
+    ]
+  });
   if (!user) {
-    return res.status(404).json({ message: 'Không tìm thấy user' });
+    return res.status(404).json({ message: 'User not found' });
   }
   return res.json({ isEmailVerified: !!user.isEmailVerified });
 });
@@ -392,17 +601,17 @@ router.post('/watchlist', auth, async (req, res) => {
   try {
     const { id, title, poster_path } = req.body;
     if (!id || !title || !poster_path) {
-      return res.status(400).json({ message: 'Thiếu thông tin phim' });
+      return res.status(400).json({ message: 'Missing movie information' });
     }
     const user = await User.findById(req.user);
     if (!user) return res.status(404).json({ message: 'User not found' });
     // Kiểm tra trùng
     if (user.watchlist.some(m => m.id === id)) {
-      return res.status(400).json({ message: 'Phim đã có trong watchlist' });
+      return res.status(400).json({ message: 'Movie already in watchlist' });
     }
     user.watchlist.push({ id, title, poster_path });
     await user.save();
-    res.json({ message: 'Đã thêm vào watchlist', watchlist: user.watchlist });
+    res.json({ message: 'Added to watchlist', watchlist: user.watchlist });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -412,12 +621,12 @@ router.post('/watchlist', auth, async (req, res) => {
 router.delete('/watchlist', auth, async (req, res) => {
   try {
     const { id } = req.body;
-    if (!id) return res.status(400).json({ message: 'Thiếu id phim' });
+    if (!id) return res.status(400).json({ message: 'Missing movie id' });
     const user = await User.findById(req.user);
     if (!user) return res.status(404).json({ message: 'User not found' });
     user.watchlist = user.watchlist.filter(m => m.id !== id);
     await user.save();
-    res.json({ message: 'Đã xóa khỏi watchlist', watchlist: user.watchlist });
+    res.json({ message: 'Removed from watchlist', watchlist: user.watchlist });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
