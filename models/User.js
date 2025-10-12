@@ -10,32 +10,18 @@ const userSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
+    unique: true,
     trim: true,
     lowercase: true
-    // Removed unique: true to allow same email for different auth types
   },
   password: {
     type: String,
-    required: function() {
-      return this.authType === 'email';
-    },
+    required: true,
     minlength: 6
   },
   avatar: {
     type: String,
     default: ''
-  },
-  authType: {
-    type: String,
-    required: true,
-    enum: ['email', 'google', 'facebook'],
-    default: 'email'
-  },
-  providerId: {
-    type: String,
-    required: function() {
-      return this.authType !== 'email';
-    }
   },
   isEmailVerified: {
     type: Boolean,
@@ -60,13 +46,9 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Compound index to ensure unique email per auth type
-// Note: This index might cause issues with existing users, so we handle uniqueness in application logic
-// userSchema.index({ email: 1, authType: 1 }, { unique: true });
-
-// Hash password before saving (only for email auth type)
+// Hash password before saving
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password') || this.authType !== 'email') return next();
+  if (!this.isModified('password')) return next();
   
   try {
     const salt = await bcrypt.genSalt(10);
@@ -77,11 +59,8 @@ userSchema.pre('save', async function(next) {
   }
 });
 
-// Method to compare password (only for email auth type)
+// Method to compare password
 userSchema.methods.comparePassword = async function(candidatePassword) {
-  if (this.authType !== 'email') {
-    throw new Error('Password comparison only available for email authentication');
-  }
   return bcrypt.compare(candidatePassword, this.password);
 };
 
