@@ -231,7 +231,12 @@ router.post('/register', [
       message: 'Registration successful! Please check your email to verify your account.',
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    console.error('Registration error:', err);
+    console.error('Error stack:', err.stack);
+    res.status(500).json({ 
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    });
   }
 });
 
