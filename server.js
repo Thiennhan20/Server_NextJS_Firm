@@ -11,8 +11,41 @@ const commentRoutes = require('./routes/comments');
 const app = express();
 
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+  origin: [
+    'https://moviesaw.vercel.app',
+    'http://localhost:3000',
+    'https://localhost:3000'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Debug middleware
+app.use((req, res, next) => {
+  console.log(`📥 ${req.method} ${req.path} from ${req.get('origin') || req.get('host')}`);
+  console.log('Headers:', {
+    'content-type': req.get('content-type'),
+    'authorization': req.get('authorization') ? 'Present' : 'Missing',
+    'origin': req.get('origin'),
+    'user-agent': req.get('user-agent')?.substring(0, 50) + '...'
+  });
+  
+  // Log response when it's sent
+  const originalSend = res.send;
+  res.send = function(data) {
+    console.log(`📤 ${req.method} ${req.path} -> ${res.statusCode}`);
+    if (res.statusCode >= 400) {
+      console.log('Error response:', data);
+    }
+    return originalSend.call(this, data);
+  };
+  
+  next();
+});
 
 // Connect to MongoDB
 console.log('Environment check:');
@@ -112,6 +145,25 @@ app.get('/api/test-email-config', (req, res) => {
       message: error.message
     });
   }
+});
+
+// Test CORS endpoint
+app.get('/api/test-cors', (req, res) => {
+  res.json({
+    message: 'CORS test successful',
+    origin: req.get('origin'),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Test registration endpoint
+app.post('/api/test-register', (req, res) => {
+  console.log('Test registration received:', req.body);
+  res.json({
+    message: 'Test registration successful',
+    receivedData: req.body,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Lấy trạng thái của server
