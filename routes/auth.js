@@ -40,8 +40,16 @@ router.post('/register', [
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
 ], async (req, res) => {
   try {
+    console.log('📧 Registration request received:', { 
+      email: req.body.email, 
+      name: req.body.name,
+      ip: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
     const { name, email, password } = req.body;
@@ -69,6 +77,11 @@ router.post('/register', [
         user.emailVerificationToken = emailVerificationToken;
         await user.save();
         // Gửi email xác thực lại
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+          console.error('❌ Email configuration missing: EMAIL_USER or EMAIL_PASS not set');
+          return res.status(500).json({ message: 'Email service not configured' });
+        }
+        
         const transporter = nodemailer.createTransport({
           service: 'gmail',
           auth: {
@@ -135,10 +148,17 @@ router.post('/register', [
             </div>
           `
         };
-        await transporter.sendMail(mailOptions);
-        return res.status(200).json({
-          message: 'This email has already been registered but not yet verified. A verification email has been resent, please check your inbox.'
-        });
+        
+        try {
+          await transporter.sendMail(mailOptions);
+          console.log('✅ Resend email sent successfully to:', email);
+          return res.status(200).json({
+            message: 'This email has already been registered but not yet verified. A verification email has been resent, please check your inbox.'
+          });
+        } catch (emailError) {
+          console.error('❌ Resend email sending failed:', emailError);
+          return res.status(500).json({ message: 'Failed to resend verification email' });
+        }
         
       }
       // Email user already exists and verified - return error
@@ -159,6 +179,11 @@ router.post('/register', [
 
     // Gửi email xác thực
     // Cấu hình transporter (dùng Gmail demo, nên dùng biến môi trường thực tế)
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error('❌ Email configuration missing: EMAIL_USER or EMAIL_PASS not set');
+      return res.status(500).json({ message: 'Email service not configured' });
+    }
+    
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -225,13 +250,29 @@ router.post('/register', [
         </div>
       `
     };
-    await transporter.sendMail(mailOptions);
+    
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log('✅ Email sent successfully to:', email);
+    } catch (emailError) {
+      console.error('❌ Email sending failed:', emailError);
+      return res.status(500).json({ message: 'Failed to send verification email' });
+    }
 
     return res.status(201).json({
       message: 'Registration successful! Please check your email to verify your account.',
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Registration error:', err);
+    console.error('Error details:', {
+      message: err.message,
+      stack: err.stack,
+      email: req.body?.email
+    });
+    res.status(500).json({ 
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    });
   }
 });
 
