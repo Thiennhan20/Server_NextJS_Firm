@@ -44,7 +44,6 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 // MongoDB connection
-console.log('Connecting to MongoDB with URI:', process.env.MONGODB_URI ? 'URI provided' : 'NO URI');
 mongoose.connect(process.env.MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,

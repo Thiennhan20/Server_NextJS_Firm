@@ -40,7 +40,6 @@ router.post('/register', [
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
 ], async (req, res) => {
   try {
-    console.log('Registration request received:', { name: req.body.name, email: req.body.email });
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -48,7 +47,6 @@ router.post('/register', [
     const { name, email, password } = req.body;
     
     // Check for existing email user (ONLY email auth type)
-    console.log('Checking for existing user with email:', email);
     let user = await User.findOne({ 
       email, 
       $or: [
@@ -56,7 +54,6 @@ router.post('/register', [
         { authType: { $exists: false } } // Legacy users
       ]
     });
-    console.log('User found:', user ? 'Yes' : 'No');
     
     if (user) {
       // If legacy user, update to email auth type
@@ -72,20 +69,13 @@ router.post('/register', [
         user.emailVerificationToken = emailVerificationToken;
         await user.save();
         // Gửi email xác thực lại
-        let transporter;
-        try {
-          transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-              user: process.env.EMAIL_USER,
-              pass: process.env.EMAIL_PASS
-            }
-          });
-        } catch (transporterError) {
-          console.error('Failed to create email transporter for resend:', transporterError);
-          // Không throw error, chỉ log và tiếp tục
-          console.log('Continuing without email transporter for resend...');
-        }
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+          }
+        });
         const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
         const mailOptions = {
           from: process.env.EMAIL_USER,
@@ -145,18 +135,7 @@ router.post('/register', [
             </div>
           `
         };
-        if (transporter) {
-          try {
-            await transporter.sendMail(mailOptions);
-            console.log('Resend email sent successfully');
-          } catch (emailError) {
-            console.error('Resend email sending failed:', emailError);
-            // Không throw error, chỉ log và tiếp tục
-            console.log('Continuing without resend email...');
-          }
-        } else {
-          console.log('No email transporter available for resend, skipping email...');
-        }
+        await transporter.sendMail(mailOptions);
         return res.status(200).json({
           message: 'This email has already been registered but not yet verified. A verification email has been resent, please check your inbox.'
         });
@@ -167,7 +146,6 @@ router.post('/register', [
     }
     
     // No email user found - REGISTER (create new)
-    console.log('Creating new user:', { name, email, authType: 'email' });
     const emailVerificationToken = crypto.randomBytes(32).toString('hex');
     user = new User({
       name,
@@ -177,31 +155,17 @@ router.post('/register', [
       emailVerificationToken,
       isEmailVerified: false
     });
-    console.log('Saving user to database...');
     await user.save();
-    console.log('User saved successfully');
 
     // Gửi email xác thực
     // Cấu hình transporter (dùng Gmail demo, nên dùng biến môi trường thực tế)
-    console.log('Creating email transporter with:', {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS ? '***' : 'MISSING'
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
     });
-    
-    let transporter;
-    try {
-      transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS
-        }
-      });
-    } catch (transporterError) {
-      console.error('Failed to create email transporter:', transporterError);
-      // Không throw error, chỉ log và tiếp tục
-      console.log('Continuing without email transporter...');
-    }
     const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
     const mailOptions = {
       from: process.env.EMAIL_USER,
@@ -261,35 +225,13 @@ router.post('/register', [
         </div>
       `
     };
-    console.log('Sending email to:', email);
-    if (transporter) {
-      try {
-        await transporter.sendMail(mailOptions);
-        console.log('Email sent successfully');
-      } catch (emailError) {
-        console.error('Email sending failed:', emailError);
-        // Không throw error, chỉ log và tiếp tục
-        console.log('Continuing without email...');
-      }
-    } else {
-      console.log('No email transporter available, skipping email...');
-    }
+    await transporter.sendMail(mailOptions);
 
     return res.status(201).json({
       message: 'Registration successful! Please check your email to verify your account.',
-      verificationUrl: `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`
     });
   } catch (err) {
-    console.error('Registration error:', err);
-    console.error('Error details:', {
-      message: err.message,
-      stack: err.stack,
-      name: err.name
-    });
-    res.status(500).json({ 
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-    });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
