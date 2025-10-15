@@ -28,14 +28,23 @@ app.disable('x-powered-by');
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: [
+    process.env.CLIENT_URL || 'http://localhost:3000',
+    'https://moviesaw.vercel.app',
+    'https://moviesaw.vercel.app/',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ],
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
 app.use(cors(corsOptions));
 app.use(express.json());
 
 // MongoDB connection
+console.log('Connecting to MongoDB with URI:', process.env.MONGODB_URI ? 'URI provided' : 'NO URI');
 mongoose.connect(process.env.MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
@@ -72,6 +81,28 @@ app.get('/', (req, res) => {
 
 // Lấy trạng thái của server
 app.get('/health', async (req, res) => {
+  const start = Date.now();
+  try {
+    // Thực hiện truy vấn đơn giản tới database
+    await mongoose.connection.db.admin().ping();
+    const dbLatency = Date.now() - start; // ms
+    res.status(200).json({
+      status: 'OK',
+      db: 'connected',
+      dbLatency: dbLatency + 'ms'
+    });
+  } catch (err) {
+    const dbLatency = Date.now() - start;
+    res.status(500).json({
+      status: 'ERROR',
+      db: 'disconnected',
+      dbLatency: dbLatency + 'ms'
+    });
+  }
+});
+
+// Thêm endpoint /api/health để tương thích với client
+app.get('/api/health', async (req, res) => {
   const start = Date.now();
   try {
     // Thực hiện truy vấn đơn giản tới database
