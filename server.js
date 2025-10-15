@@ -33,13 +33,12 @@ const corsOptions = {
     'https://moviesaw.vercel.app',
     'https://moviesaw.vercel.app/',
     'http://localhost:3000',
-    'http://localhost:3001',
-    'https://moviesaw.vercel.app' // Ensure exact match
+    'http://localhost:3001'
   ],
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
 app.use(cors(corsOptions));
 app.use(express.json());

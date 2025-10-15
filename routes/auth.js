@@ -7,8 +7,11 @@ const auth = require('../middleware/auth');
 const BlacklistedToken = require('../models/BlacklistedToken');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const axios = require('axios');
+
+// Initialize Resend client once
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Middleware to validate request
 const validateRequest = (req, res, next) => {
@@ -40,16 +43,8 @@ router.post('/register', [
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
 ], async (req, res) => {
   try {
-    console.log('📧 Registration request received:', { 
-      email: req.body.email, 
-      name: req.body.name,
-      ip: req.ip,
-      userAgent: req.get('User-Agent')
-    });
-    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('❌ Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
     const { name, email, password } = req.body;
@@ -76,22 +71,13 @@ router.post('/register', [
         const emailVerificationToken = crypto.randomBytes(32).toString('hex');
         user.emailVerificationToken = emailVerificationToken;
         await user.save();
-        // Gửi email xác thực lại
-        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-          console.error('❌ Email configuration missing: EMAIL_USER or EMAIL_PASS not set');
-          return res.status(500).json({ message: 'Email service not configured' });
-        }
-        
-        const transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS
-          }
-        });
         const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
-        const mailOptions = {
-          from: process.env.EMAIL_USER,
+        const fromEmailResend = (process.env.NODE_ENV === 'production')
+          ? (process.env.RESEND_FROM_EMAIL || 'ntn@moviesaw.com')
+          : 'onboarding@resend.dev';
+
+        await resend.emails.send({
+          from: `Entertainment World <${fromEmailResend}>`,
           to: email,
           subject: 'Entertainment World Account Email Verification Resend',
           html: `
@@ -147,18 +133,10 @@ router.post('/register', [
               </p>
             </div>
           `
-        };
-        
-        try {
-          await transporter.sendMail(mailOptions);
-          console.log('✅ Resend email sent successfully to:', email);
-          return res.status(200).json({
-            message: 'This email has already been registered but not yet verified. A verification email has been resent, please check your inbox.'
-          });
-        } catch (emailError) {
-          console.error('❌ Resend email sending failed:', emailError);
-          return res.status(500).json({ message: 'Failed to resend verification email' });
-        }
+        });
+        return res.status(200).json({
+          message: 'This email has already been registered but not yet verified. A verification email has been resent, please check your inbox.'
+        });
         
       }
       // Email user already exists and verified - return error
@@ -177,102 +155,76 @@ router.post('/register', [
     });
     await user.save();
 
-    // Gửi email xác thực
-    // Cấu hình transporter (dùng Gmail demo, nên dùng biến môi trường thực tế)
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.error('❌ Email configuration missing: EMAIL_USER or EMAIL_PASS not set');
-      return res.status(500).json({ message: 'Email service not configured' });
-    }
-    
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
-    });
+    // Gửi email xác thực bằng Resend
     const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
+    const fromEmail = (process.env.NODE_ENV === 'production')
+      ? (process.env.RESEND_FROM_EMAIL || 'ntn@moviesaw.com')
+      : 'onboarding@resend.dev';
+
+    await resend.emails.send({
+      from: `Entertainment World <${fromEmail}>`,
       to: email,
       subject: 'Entertainment World Account Email Verification',
       html: `
-        <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-          <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
-            
-            <!-- Content wrapper -->
-            <div style="position:relative;z-index:1;">
-              
-              <!-- Icon -->
-              <div style="width:60px;height:60px;margin:0 auto 12px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
-                <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='width:30px;height:30px;filter:brightness(0) invert(1);'/>
-              </div>
-              
-              <!-- Heading -->
-              <h1 style="color:#ffffff;margin:0 0 12px 0;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
-                Welcome <span style="color:#ffd700; text-shadow: 0 0 8px rgba(255, 215, 0, 0.8), 0 0 15px rgba(255, 215, 0, 0.6);">${name}</span>!
-              </h1>
-              
-              <!-- Description -->
-              <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
-                Thank you for registering with Entertainment World!
-              </p>
-              <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
-                Please click the button below to verify your email address to complete your registration and start exploring.
-              </p>
+            <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+              <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
+                
+                <!-- Content wrapper -->
+                <div style="position:relative;z-index:1;">
+                  
+                  <!-- Icon -->
+                  <div style="width:60px;height:60px;margin:0 auto 12px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
+                    <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='width:30px;height:30px;filter:brightness(0) invert(1);'/>
+                  </div>
+                  
+                  <!-- Heading -->
+                  <h1 style="color:#ffffff;margin:0 0 12px 0;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
+                    Welcome <span style="color:#ffd700; text-shadow: 0 0 8px rgba(255, 215, 0, 0.8), 0 0 15px rgba(255, 215, 0, 0.6);">${name}</span>!
+                  </h1>
+                  
+                  <!-- Description -->
+                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
+                    Thank you for registering with Entertainment World!
+                  </p>
+                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
+                    Please click the button below to verify your email address to complete your registration and start exploring.
+                  </p>
 
-              <!-- Arrows -->
-              <div style="margin-bottom: 20px; color: #ffffff;">
-                <span style="display: block; margin: 0 auto;">▼</span>
-                <span style="display: block; margin: 0 auto;">▼</span>
+                  <!-- Arrows -->
+                  <div style="margin-bottom: 20px; color: #ffffff;">
+                    <span style="display: block; margin: 0 auto;">▼</span>
+                    <span style="display: block; margin: 0 auto;">▼</span>
+                  </div>
+                  
+                  <!-- Button -->
+                  <a href="${verifyUrl}" style="display:inline-block;padding:12px 32px;background:#ffffff;color:#1e40af;font-weight:700;font-size:14px;border:2px solid #1e40af;border-radius:8px;text-decoration:none;box-shadow:0 6px 20px rgba(30, 64, 175, 0.4), inset 0 0 8px rgba(30, 64, 175, 0.3);transition:all 0.3s ease;letter-spacing:0.5px;">
+                    Verify Email Address
+                  </a>
+                  
+                  <!-- Divider -->
+                  <div style="height:1px;background:rgba(255,255,255,0.2);margin:16px auto;max-width:60%;"></div>
+                  
+                  <!-- Help text -->
+                  <p style="color:rgba(255,255,255,0.7);font-size:12px;margin:0;">
+                    Need help? Contact us or try signing up again.
+                  </p>
+                  
+                </div>
               </div>
               
-              <!-- Button -->
-              <a href="${verifyUrl}" style="display:inline-block;padding:12px 32px;background:#ffffff;color:#1e40af;font-weight:700;font-size:14px;border:2px solid #1e40af;border-radius:8px;text-decoration:none;box-shadow:0 6px 20px rgba(30, 64, 175, 0.4), inset 0 0 8px rgba(30, 64, 175, 0.3);transition:all 0.3s ease;letter-spacing:0.5px;">
-                Verify Email Address
-              </a>
-              
-              <!-- Divider -->
-              <div style="height:1px;background:rgba(255,255,255,0.2);margin:16px auto;max-width:60%;"></div>
-              
-              <!-- Help text -->
-              <p style="color:rgba(255,255,255,0.7);font-size:12px;margin:0;">
-                Need help? Contact us or try signing up again.
+              <!-- Footer -->
+              <p style="text-align:center;color:#888;font-size:11px;margin-top:16px;line-height:1.4;">
+                This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
               </p>
-              
             </div>
-          </div>
-          
-          <!-- Footer -->
-          <p style="text-align:center;color:#888;font-size:11px;margin-top:16px;line-height:1.4;">
-            This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
-          </p>
-        </div>
-      `
-    };
-    
-    try {
-      await transporter.sendMail(mailOptions);
-      console.log('✅ Email sent successfully to:', email);
-    } catch (emailError) {
-      console.error('❌ Email sending failed:', emailError);
-      return res.status(500).json({ message: 'Failed to send verification email' });
-    }
+          `
+    });
 
     return res.status(201).json({
       message: 'Registration successful! Please check your email to verify your account.',
     });
   } catch (err) {
-    console.error('❌ Registration error:', err);
-    console.error('Error details:', {
-      message: err.message,
-      stack: err.stack,
-      email: req.body?.email
-    });
-    res.status(500).json({ 
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-    });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
