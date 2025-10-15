@@ -7,11 +7,8 @@ const auth = require('../middleware/auth');
 const BlacklistedToken = require('../models/BlacklistedToken');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 const crypto = require('crypto');
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 const axios = require('axios');
-
-// Initialize Resend client once
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Middleware to validate request
 const validateRequest = (req, res, next) => {
@@ -72,12 +69,25 @@ router.post('/register', [
         user.emailVerificationToken = emailVerificationToken;
         await user.save();
         const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
-        const fromEmailResend = (process.env.NODE_ENV === 'production')
-          ? (process.env.RESEND_FROM_EMAIL || 'ntn@moviesaw.com')
-          : 'onboarding@resend.dev';
 
-        await resend.emails.send({
-          from: `Entertainment World <${fromEmailResend}>`,
+        const transporterResend = nodemailer.createTransport({
+          host: 'smtp.gmail.com',
+          port: 587,
+          secure: false,
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+          },
+          connectionTimeout: 30000,
+          greetingTimeout: 15000,
+          socketTimeout: 30000,
+          pool: true,
+          maxConnections: 5,
+          maxMessages: 100,
+        });
+
+        await transporterResend.sendMail({
+          from: process.env.EMAIL_USER,
           to: email,
           subject: 'Entertainment World Account Email Verification Resend',
           html: `
@@ -155,14 +165,27 @@ router.post('/register', [
     });
     await user.save();
 
-    // Gửi email xác thực bằng Resend
+    // Gửi email xác thực bằng Nodemailer (Gmail SMTP)
     const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
-    const fromEmail = (process.env.NODE_ENV === 'production')
-      ? (process.env.RESEND_FROM_EMAIL || 'ntn@moviesaw.com')
-      : 'onboarding@resend.dev';
 
-    await resend.emails.send({
-      from: `Entertainment World <${fromEmail}>`,
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      connectionTimeout: 30000,
+      greetingTimeout: 15000,
+      socketTimeout: 30000,
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
+    });
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
       to: email,
       subject: 'Entertainment World Account Email Verification',
       html: `
