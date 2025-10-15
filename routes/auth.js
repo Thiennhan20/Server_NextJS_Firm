@@ -8,7 +8,9 @@ const BlacklistedToken = require('../models/BlacklistedToken');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const sgMail = require('@sendgrid/mail');
+const Brevo = require('@getbrevo/brevo');
+const brevo = new Brevo.TransactionalEmailsApi();
+brevo.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY || '');
 const axios = require('axios');
 
 // Middleware to validate request
@@ -71,12 +73,11 @@ router.post('/register', [
         await user.save();
         const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
 
-        sgMail.setApiKey(process.env.SENDGRID_API_KEY || '');
-        await sgMail.send({
-          from: process.env.SENDGRID_FROM_EMAIL || 'noreply@moviesaw.com',
-          to: email,
-          subject: 'Entertainment World Account Email Verification Resend',
-          html: `
+        const resendMail = new Brevo.SendSmtpEmail();
+        resendMail.to = [{ email }];
+        resendMail.sender = { email: process.env.BREVO_SENDER_EMAIL, name: process.env.BREVO_SENDER_NAME || 'Entertainment World' };
+        resendMail.subject = 'Entertainment World Account Email Verification Resend';
+        resendMail.htmlContent = `
             <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
               <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
                 
@@ -128,8 +129,8 @@ router.post('/register', [
                 This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
               </p>
             </div>
-          `
-        });
+          `;
+        await brevo.sendTransacEmail(resendMail);
         return res.status(200).json({
           message: 'This email has already been registered but not yet verified. A verification email has been resent, please check your inbox.'
         });
@@ -151,30 +152,14 @@ router.post('/register', [
     });
     await user.save();
 
-    // Gửi email xác thực bằng Nodemailer (Gmail SMTP)
+    // Gửi email xác thực bằng Brevo (HTTPS)
     const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
 
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      connectionTimeout: 30000,
-      greetingTimeout: 15000,
-      socketTimeout: 30000,
-      pool: true,
-      maxConnections: 5,
-      maxMessages: 100,
-    });
-
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'Entertainment World Account Email Verification',
-      html: `
+    const mail = new Brevo.SendSmtpEmail();
+    mail.to = [{ email }];
+    mail.sender = { email: process.env.BREVO_SENDER_EMAIL, name: process.env.BREVO_SENDER_NAME || 'Entertainment World' };
+    mail.subject = 'Entertainment World Account Email Verification';
+    mail.htmlContent = `
             <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
               <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
                 
@@ -226,8 +211,8 @@ router.post('/register', [
                 This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
               </p>
             </div>
-          `
-    });
+          `;
+    await brevo.sendTransacEmail(mail);
 
     return res.status(201).json({
       message: 'Registration successful! Please check your email to verify your account.',
