@@ -45,206 +45,83 @@ router.post('/register', [
       return res.status(400).json({ errors: errors.array() });
     }
     const { name, email, password } = req.body;
-    
-    // Check for existing email user (ONLY email auth type)
-    let user = await User.findOne({ 
-      email, 
-      $or: [
-        { authType: 'email' },
-        { authType: { $exists: false } } // Legacy users
-      ]
-    });
-    
+    let user = await User.findOne({ email });
     if (user) {
-      // If legacy user, update to email auth type
-      if (!user.authType) {
-        user.authType = 'email';
-        await user.save();
-      }
-      
-      // Email user already exists - check verification status
       if (!user.isEmailVerified) {
         // Gửi lại email xác thực
         const emailVerificationToken = crypto.randomBytes(32).toString('hex');
         user.emailVerificationToken = emailVerificationToken;
         await user.save();
-        const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
-
-        const transporterResend = nodemailer.createTransport({
-          host: 'smtp.gmail.com',
-          port: 587,
-          secure: false,
+        // Gửi email xác thực lại
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
           auth: {
             user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
-          },
-          connectionTimeout: 30000,
-          greetingTimeout: 15000,
-          socketTimeout: 30000,
-          pool: true,
-          maxConnections: 5,
-          maxMessages: 100,
+            pass: process.env.EMAIL_PASS
+          }
         });
-
-        await transporterResend.sendMail({
+        const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
+        const mailOptions = {
           from: process.env.EMAIL_USER,
           to: email,
-          subject: 'Entertainment World Account Email Verification Resend',
+          subject: 'Xác thực lại email tài khoản Movie 3D',
           html: `
-            <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-              <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
-                
-                <!-- Content wrapper -->
-                <div style="position:relative;z-index:1;">
-                  
-                  <!-- Icon -->
-                  <div style="width:60px;height:60px;margin:0 auto 12px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
-                    <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='width:30px;height:30px;filter:brightness(0) invert(1);'/>
-                  </div>
-                  
-                  <!-- Heading -->
-                  <h1 style="color:#ffffff;margin:0 0 12px 0;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
-                    Welcome <span style="color:#ffd700; text-shadow: 0 0 8px rgba(255, 215, 0, 0.8), 0 0 15px rgba(255, 215, 0, 0.6);">${name}</span>!
-                  </h1>
-                  
-                  <!-- Description -->
-                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
-                    Thank you for registering with Entertainment World!
-                  </p>
-                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
-                    Please click the button below to verify your email address to complete your registration and start exploring.
-                  </p>
-
-                  <!-- Arrows -->
-                  <div style="margin-bottom: 20px; color: #ffffff;">
-                    <span style="display: block; margin: 0 auto;">▼</span>
-                    <span style="display: block; margin: 0 auto;">▼</span>
-                  </div>
-                  
-                  <!-- Button -->
-                  <a href="${verifyUrl}" style="display:inline-block;padding:12px 32px;background:#ffffff;color:#1e40af;font-weight:700;font-size:14px;border:2px solid #1e40af;border-radius:8px;text-decoration:none;box-shadow:0 6px 20px rgba(30, 64, 175, 0.4), inset 0 0 8px rgba(30, 64, 175, 0.3);transition:all 0.3s ease;letter-spacing:0.5px;">
-                    Verify Email Address
-                  </a>
-                  
-                  <!-- Divider -->
-                  <div style="height:1px;background:rgba(255,255,255,0.2);margin:16px auto;max-width:60%;"></div>
-                  
-                  <!-- Help text -->
-                  <p style="color:rgba(255,255,255,0.7);font-size:12px;margin:0;">
-                    Need help? Contact us or try signing up again.
-                  </p>
-                  
-                </div>
-              </div>
-              
-              <!-- Footer -->
-              <p style="text-align:center;color:#888;font-size:11px;margin-top:16px;line-height:1.4;">
-                This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
-              </p>
+            <div style="max-width:480px;width:95vw;margin:32px auto;padding:6vw 4vw 32px 4vw;background:linear-gradient(135deg,#181824 80%,#ffd600 100%);border-radius:24px;box-shadow:0 8px 32px #0005;font-family:'Segoe UI',sans-serif;text-align:center;box-sizing:border-box;">
+              <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='height:48px;max-width:80px;width:30vw;margin-bottom:20px;filter:drop-shadow(0 2px 8px #ffd60099);'/>
+              <h2 style="color:#ffd600;margin-bottom:12px;font-size:clamp(1.2rem,4vw,2rem);font-weight:800;">Xin chào ${user.name}!</h2>
+              <p style="color:#fff;font-size:clamp(1rem,2.5vw,1.2rem);margin-bottom:20px;">Email này đã đăng ký nhưng chưa xác thực.<br>Vui lòng xác thực email bằng cách nhấn vào nút bên dưới:</p>
+              <a href="${verifyUrl}" style="display:inline-block;padding:14px 8vw;background:#ffd600;color:#222;font-weight:bold;font-size:clamp(1rem,2.5vw,1.3rem);border-radius:12px;text-decoration:none;margin:20px 0 12px 0;box-shadow:0 4px 16px #ffd60080;letter-spacing:1px;min-width:120px;">Xác thực Email</a>
+              <p style="color:#fff;font-size:clamp(0.9rem,2vw,1.1rem);margin-top:20px;word-break:break-all;">Nếu nút không hoạt động, hãy copy link sau và dán vào trình duyệt:<br><span style='color:#ffd600;'>${verifyUrl}</span></p>
             </div>
           `
-        });
+        };
+        await transporter.sendMail(mailOptions);
         return res.status(200).json({
           message: 'This email has already been registered but not yet verified. A verification email has been resent, please check your inbox.'
         });
         
       }
-      // Email user already exists and verified - return error
       return res.status(400).json({ message: 'User already exists' });
     }
-    
-    // No email user found - REGISTER (create new)
+    // Sinh token xác thực email
     const emailVerificationToken = crypto.randomBytes(32).toString('hex');
     user = new User({
       name,
       email,
       password,
-      authType: 'email',
       emailVerificationToken,
       isEmailVerified: false
     });
     await user.save();
 
-    // Gửi email xác thực bằng Nodemailer (Gmail SMTP)
-    const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
-
+    // Gửi email xác thực
+    // Cấu hình transporter (dùng Gmail demo, nên dùng biến môi trường thực tế)
     const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
+      service: 'gmail',
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      connectionTimeout: 30000,
-      greetingTimeout: 15000,
-      socketTimeout: 30000,
-      pool: true,
-      maxConnections: 5,
-      maxMessages: 100,
+        pass: process.env.EMAIL_PASS
+      }
     });
-
-    await transporter.sendMail({
+    const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
+    const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
-      subject: 'Entertainment World Account Email Verification',
+      subject: 'Xác thực email tài khoản Movie 3D',
       html: `
-            <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-              <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
-                
-                <!-- Content wrapper -->
-                <div style="position:relative;z-index:1;">
-                  
-                  <!-- Icon -->
-                  <div style="width:60px;height:60px;margin:0 auto 12px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
-                    <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='width:30px;height:30px;filter:brightness(0) invert(1);'/>
-                  </div>
-                  
-                  <!-- Heading -->
-                  <h1 style="color:#ffffff;margin:0 0 12px 0;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
-                    Welcome <span style="color:#ffd700; text-shadow: 0 0 8px rgba(255, 215, 0, 0.8), 0 0 15px rgba(255, 215, 0, 0.6);">${name}</span>!
-                  </h1>
-                  
-                  <!-- Description -->
-                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
-                    Thank you for registering with Entertainment World!
-                  </p>
-                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
-                    Please click the button below to verify your email address to complete your registration and start exploring.
-                  </p>
-
-                  <!-- Arrows -->
-                  <div style="margin-bottom: 20px; color: #ffffff;">
-                    <span style="display: block; margin: 0 auto;">▼</span>
-                    <span style="display: block; margin: 0 auto;">▼</span>
-                  </div>
-                  
-                  <!-- Button -->
-                  <a href="${verifyUrl}" style="display:inline-block;padding:12px 32px;background:#ffffff;color:#1e40af;font-weight:700;font-size:14px;border:2px solid #1e40af;border-radius:8px;text-decoration:none;box-shadow:0 6px 20px rgba(30, 64, 175, 0.4), inset 0 0 8px rgba(30, 64, 175, 0.3);transition:all 0.3s ease;letter-spacing:0.5px;">
-                    Verify Email Address
-                  </a>
-                  
-                  <!-- Divider -->
-                  <div style="height:1px;background:rgba(255,255,255,0.2);margin:16px auto;max-width:60%;"></div>
-                  
-                  <!-- Help text -->
-                  <p style="color:rgba(255,255,255,0.7);font-size:12px;margin:0;">
-                    Need help? Contact us or try signing up again.
-                  </p>
-                  
-                </div>
-              </div>
-              
-              <!-- Footer -->
-              <p style="text-align:center;color:#888;font-size:11px;margin-top:16px;line-height:1.4;">
-                This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
-              </p>
-            </div>
-          `
-    });
+        <div style="max-width:480px;width:95vw;margin:32px auto;padding:6vw 4vw 32px 4vw;background:linear-gradient(135deg,#181824 80%,#ffd600 100%);border-radius:24px;box-shadow:0 8px 32px #0005;font-family:'Segoe UI',sans-serif;text-align:center;box-sizing:border-box;">
+          <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='height:48px;max-width:80px;width:30vw;margin-bottom:20px;filter:drop-shadow(0 2px 8px #ffd60099);'/>
+          <h2 style="color:#ffd600;margin-bottom:12px;font-size:clamp(1.2rem,4vw,2rem);font-weight:800;">Chào mừng ${name}!</h2>
+          <p style="color:#fff;font-size:clamp(1rem,2.5vw,1.2rem);margin-bottom:20px;">Vui lòng xác thực email bằng cách nhấn vào nút bên dưới:</p>
+          <a href="${verifyUrl}" style="display:inline-block;padding:14px 8vw;background:#ffd600;color:#222;font-weight:bold;font-size:clamp(1rem,2.5vw,1.3rem);border-radius:12px;text-decoration:none;margin:20px 0 12px 0;box-shadow:0 4px 16px #ffd60080;letter-spacing:1px;min-width:120px;">Xác thực Email</a>
+          <p style="color:#fff;font-size:clamp(0.9rem,2vw,1.1rem);margin-top:20px;word-break:break-all;">Nếu nút không hoạt động, hãy copy link sau và dán vào trình duyệt:<br><span style='color:#ffd600;'>${verifyUrl}</span></p>
+        </div>
+      `
+    };
+    await transporter.sendMail(mailOptions);
 
     return res.status(201).json({
-      message: 'Registration successful! Please check your email to verify your account.',
+      message: 'Đăng ký thành công! Vui lòng kiểm tra email để xác thực tài khoản.',
     });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
