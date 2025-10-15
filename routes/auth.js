@@ -8,26 +8,8 @@ const BlacklistedToken = require('../models/BlacklistedToken');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 const axios = require('axios');
-
-// Helper: send mail with retry/backoff on ETIMEDOUT/timeout
-async function sendMailWithRetry(transporter, mailOptions, maxAttempts = 3) {
-  let attempt = 0;
-  let lastError = null;
-  while (attempt < maxAttempts) {
-    try {
-      return await transporter.sendMail(mailOptions);
-    } catch (err) {
-      lastError = err;
-      const msg = (err && (err.code === 'ETIMEDOUT' || err.code === 'ESOCKET' || /timed?\s*out/i.test(err.message))) ? 'timeout' : 'other';
-      attempt += 1;
-      if (attempt >= maxAttempts || msg !== 'timeout') break;
-      const delayMs = 5000 * attempt; // 5s, 10s, 15s
-      await new Promise(r => setTimeout(r, delayMs));
-    }
-  }
-  throw lastError;
-}
 
 // Middleware to validate request
 const validateRequest = (req, res, next) => {
@@ -89,24 +71,9 @@ router.post('/register', [
         await user.save();
         const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
 
-        const transporterResend = nodemailer.createTransport({
-          host: 'smtp.gmail.com',
-          port: 587,
-          secure: false,
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
-          },
-          connectionTimeout: 30000,
-          greetingTimeout: 15000,
-          socketTimeout: 30000,
-          pool: true,
-          maxConnections: 5,
-          maxMessages: 100,
-        });
-
-        await sendMailWithRetry(transporterResend, {
-          from: process.env.EMAIL_USER,
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY || '');
+        await sgMail.send({
+          from: process.env.SENDGRID_FROM_EMAIL || 'noreply@moviesaw.com',
           to: email,
           subject: 'Entertainment World Account Email Verification Resend',
           html: `
@@ -162,7 +129,7 @@ router.post('/register', [
               </p>
             </div>
           `
-        }, 3);
+        });
         return res.status(200).json({
           message: 'This email has already been registered but not yet verified. A verification email has been resent, please check your inbox.'
         });
@@ -203,7 +170,7 @@ router.post('/register', [
       maxMessages: 100,
     });
 
-    await sendMailWithRetry(transporter, {
+    await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
       subject: 'Entertainment World Account Email Verification',
@@ -259,8 +226,8 @@ router.post('/register', [
                 This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
               </p>
             </div>
-      `
-    }, 3);
+          `
+    });
 
     return res.status(201).json({
       message: 'Registration successful! Please check your email to verify your account.',

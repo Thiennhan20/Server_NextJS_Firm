@@ -67,17 +67,6 @@ mongoose.connection.on('reconnected', () => {
 app.use('/api/auth', authRoutes);
 app.use('/api/comments', commentRoutes);
 
-// Email connectivity probe (quick check for env presence; non-invasive)
-app.get('/api/email/health', (req, res) => {
-  const hasUser = !!process.env.EMAIL_USER;
-  const hasPass = !!process.env.EMAIL_PASS;
-  res.status(200).json({
-    smtpConfigured: hasUser && hasPass,
-    EMAIL_USER: hasUser ? 'SET' : 'MISSING',
-    EMAIL_PASS: hasPass ? 'SET' : 'MISSING'
-  });
-});
-
 // Tạo HTTP server
 const server = http.createServer(app);
 
@@ -111,27 +100,6 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// Thêm endpoint /api/health để tương thích với client
-app.get('/api/health', async (req, res) => {
-  const start = Date.now();
-  try {
-    // Thực hiện truy vấn đơn giản tới database
-    await mongoose.connection.db.admin().ping();
-    const dbLatency = Date.now() - start; // ms
-    res.status(200).json({
-      status: 'OK',
-      db: 'connected',
-      dbLatency: dbLatency + 'ms'
-    });
-  } catch (err) {
-    const dbLatency = Date.now() - start;
-    res.status(500).json({
-      status: 'ERROR',
-      db: 'disconnected',
-      dbLatency: dbLatency + 'ms'
-    });
-  }
-});
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
