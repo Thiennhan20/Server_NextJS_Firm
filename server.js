@@ -67,6 +67,17 @@ mongoose.connection.on('reconnected', () => {
 app.use('/api/auth', authRoutes);
 app.use('/api/comments', commentRoutes);
 
+// Email connectivity probe (quick check for env presence; non-invasive)
+app.get('/api/email/health', (req, res) => {
+  const hasUser = !!process.env.EMAIL_USER;
+  const hasPass = !!process.env.EMAIL_PASS;
+  res.status(200).json({
+    smtpConfigured: hasUser && hasPass,
+    EMAIL_USER: hasUser ? 'SET' : 'MISSING',
+    EMAIL_PASS: hasPass ? 'SET' : 'MISSING'
+  });
+});
+
 // Tạo HTTP server
 const server = http.createServer(app);
 
