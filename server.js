@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
@@ -25,6 +26,9 @@ app.use(helmet({
   },
 }));
 app.disable('x-powered-by');
+
+// Enable response compression
+app.use(compression());
 
 // CORS configuration
 const corsOptions = {

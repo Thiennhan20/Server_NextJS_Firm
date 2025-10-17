@@ -14,7 +14,7 @@ const validateRequest = (req, res, next) => {
   next();
 };
 
-// GET /api/comments/:movieId/:type - Lấy tất cả comments của một movie/tvshow
+// GET /api/comments/:movieId/:type - Lấy comments với phân trang, sort DB-side và batched replies
 router.get('/:movieId/:type', async (req, res) => {
   try {
     const { movieId, type } = req.params;
@@ -29,26 +29,76 @@ router.get('/:movieId/:type', async (req, res) => {
       return res.status(400).json({ message: 'Type must be either movie or tvshow' });
     }
 
-    let comments = await Comment.getCommentsWithUserInfo(movieId, type, userId);
+    // Pagination params
+    const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10), 1), 50);
+    const skip = (page - 1) * limit;
 
-    // Sort comments based on sortBy parameter
+    // Sort mapping
+    let sortQuery;
     switch (sortBy) {
       case 'oldest':
-        comments = comments.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        sortQuery = { createdAt: 1 };
         break;
       case 'popular':
-        comments = comments.sort((a, b) => b.likes - a.likes);
+        sortQuery = { likes: -1, createdAt: -1 };
         break;
       case 'newest':
       default:
-        comments = comments.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        sortQuery = { createdAt: -1 };
         break;
     }
 
+    // Total count of top-level comments
+    const [total, topLevel] = await Promise.all([
+      Comment.countDocuments({ movieId: Number(movieId), type, parentId: null, isDeleted: false }),
+      Comment.find({ movieId: Number(movieId), type, parentId: null, isDeleted: false })
+        .populate('userId', 'name email avatar')
+        .sort(sortQuery)
+        .skip(skip)
+        .limit(limit)
+        .lean()
+    ]);
+
+    const topIds = topLevel.map(c => c._id);
+
+    // Batched fetch of replies for current page comments
+    const replies = topIds.length
+      ? await Comment.find({ parentId: { $in: topIds }, isDeleted: false })
+          .populate('userId', 'name email avatar')
+          .sort({ createdAt: 1 })
+          .lean()
+      : [];
+
+    // Group replies by parentId
+    const repliesByParent = new Map();
+    for (const r of replies) {
+      // compute isLiked and strip likedBy
+      const liked = userId ? r.likedBy?.some(id => id.equals?.(userId)) : false;
+      delete r.likedBy;
+      const arr = repliesByParent.get(String(r.parentId)) || [];
+      arr.push({ ...r, isLiked: liked });
+      repliesByParent.set(String(r.parentId), arr);
+    }
+
+    // Compose final list, compute isLiked for top-level, strip likedBy
+    const data = topLevel.map(c => {
+      const liked = userId ? c.likedBy?.some(id => id.equals?.(userId)) : false;
+      const { likedBy, ...rest } = c;
+      return {
+        ...rest,
+        isLiked: liked,
+        replies: repliesByParent.get(String(c._id)) || []
+      };
+    });
+
     res.json({
       success: true,
-      data: comments,
-      total: comments.length
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
     });
   } catch (error) {
     console.error('Get comments error:', error);
