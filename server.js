@@ -9,6 +9,7 @@ require('dotenv').config();
 const initializeWebSocket = require('./websocket');
 const authRoutes = require('./routes/auth');
 const commentRoutes = require('./routes/comments');
+const recentlyWatchedRoutes = require('./routes/recentlyWatched');
 
 const app = express();
 // Security middleware
@@ -70,6 +71,7 @@ mongoose.connection.on('reconnected', () => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/comments', commentRoutes);
+app.use('/api/recently-watched', recentlyWatchedRoutes);
 
 // Tạo HTTP server
 const server = http.createServer(app);
