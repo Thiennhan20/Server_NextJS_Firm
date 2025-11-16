@@ -12,6 +12,37 @@ const Brevo = require('@getbrevo/brevo');
 const brevo = new Brevo.TransactionalEmailsApi();
 brevo.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY || '');
 const axios = require('axios');
+const { optimizeAvatar, base64ToBuffer, validateImage } = require('../utils/avatarOptimizer');
+
+// Helper function to download and optimize external avatar
+async function downloadAndOptimizeAvatar(avatarUrl) {
+  try {
+    if (!avatarUrl || !avatarUrl.startsWith('http')) {
+      return avatarUrl;
+    }
+
+    console.log('Downloading avatar from:', avatarUrl.substring(0, 50));
+    
+    // Download avatar
+    const response = await axios.get(avatarUrl, {
+      responseType: 'arraybuffer',
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    // Optimize with Sharp
+    const optimized = await optimizeAvatar(Buffer.from(response.data));
+    console.log('Avatar downloaded and optimized successfully');
+    
+    return optimized; // Returns base64 WebP
+  } catch (error) {
+    console.error('Failed to download/optimize avatar:', error.message);
+    // Return original URL as fallback
+    return avatarUrl;
+  }
+}
 
 // Middleware to validate request
 const validateRequest = (req, res, next) => {
@@ -272,6 +303,9 @@ router.post('/login', [
         id: user._id,
         name: user.name,
         email: user.email,
+        avatar: user.avatar || '',
+        originalAvatar: user.originalAvatar || '',
+        authType: user.authType || 'email',
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       }
@@ -316,8 +350,21 @@ router.post('/google-login', [
       if (name && user.name !== name) {
         user.name = name;
       }
-      if (avatar && user.avatar !== avatar) {
-        user.avatar = avatar;
+      
+      // Cập nhật avatar và originalAvatar nếu cần
+      if (avatar) {
+        // Nếu chưa có originalAvatar hoặc vẫn là URL (chưa optimize)
+        if (!user.originalAvatar || user.originalAvatar === '' || user.originalAvatar.startsWith('http')) {
+          // Download và optimize avatar
+          const optimizedAvatar = await downloadAndOptimizeAvatar(avatar);
+          user.originalAvatar = optimizedAvatar;
+          console.log('Original avatar cached as base64');
+        }
+        
+        // Chỉ cập nhật avatar nếu user chưa upload custom avatar
+        if (!user.avatar || user.avatar === '' || user.avatar.startsWith('http')) {
+          user.avatar = user.originalAvatar; // Use cached optimized version
+        }
       }
       await user.save();
 
@@ -332,6 +379,9 @@ router.post('/google-login', [
           id: user._id,
           name: user.name,
           email: user.email,
+          avatar: user.avatar || '',
+          originalAvatar: user.originalAvatar || '',
+          authType: user.authType,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         }
@@ -339,6 +389,9 @@ router.post('/google-login', [
     }
 
     // Google user doesn't exist - REGISTER (create new)
+    // Download and optimize avatar first
+    const optimizedAvatar = avatar ? await downloadAndOptimizeAvatar(avatar) : '';
+    
     user = await User.findOneAndUpdate(
       { email, authType: 'google' },
       {
@@ -346,7 +399,8 @@ router.post('/google-login', [
         email,
         authType: 'google',
         providerId: sub,
-        avatar: avatar || '',
+        avatar: optimizedAvatar,
+        originalAvatar: optimizedAvatar, // Lưu avatar đã optimize
         isEmailVerified: !!email_verified,
         emailVerificationToken: ''
       },
@@ -364,6 +418,9 @@ router.post('/google-login', [
         id: user._id,
         name: user.name,
         email: user.email,
+        avatar: user.avatar || '',
+        originalAvatar: user.originalAvatar || '',
+        authType: user.authType,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       }
@@ -419,8 +476,21 @@ router.post('/facebook-login', [
       if (name && user.name !== name) {
         user.name = name;
       }
-      if (avatar && user.avatar !== avatar) {
-        user.avatar = avatar;
+      
+      // Cập nhật avatar và originalAvatar nếu cần
+      if (avatar) {
+        // Nếu chưa có originalAvatar hoặc vẫn là URL (chưa optimize)
+        if (!user.originalAvatar || user.originalAvatar === '' || user.originalAvatar.startsWith('http')) {
+          // Download và optimize avatar
+          const optimizedAvatar = await downloadAndOptimizeAvatar(avatar);
+          user.originalAvatar = optimizedAvatar;
+          console.log('Original avatar cached as base64');
+        }
+        
+        // Chỉ cập nhật avatar nếu user chưa upload custom avatar
+        if (!user.avatar || user.avatar === '' || user.avatar.startsWith('http')) {
+          user.avatar = user.originalAvatar; // Use cached optimized version
+        }
       }
       await user.save();
 
@@ -435,6 +505,9 @@ router.post('/facebook-login', [
           id: user._id,
           name: user.name,
           email: user.email,
+          avatar: user.avatar || '',
+          originalAvatar: user.originalAvatar || '',
+          authType: user.authType,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         }
@@ -442,6 +515,9 @@ router.post('/facebook-login', [
     }
 
     // Facebook user doesn't exist - REGISTER (create new)
+    // Download and optimize avatar first
+    const optimizedAvatar = avatar ? await downloadAndOptimizeAvatar(avatar) : '';
+    
     user = await User.findOneAndUpdate(
       { email, authType: 'facebook' },
       {
@@ -449,7 +525,8 @@ router.post('/facebook-login', [
         email,
         authType: 'facebook',
         providerId: facebookId,
-        avatar: avatar || '',
+        avatar: optimizedAvatar,
+        originalAvatar: optimizedAvatar, // Lưu avatar đã optimize
         isEmailVerified: true, // Facebook emails are pre-verified
         emailVerificationToken: ''
       },
@@ -467,6 +544,9 @@ router.post('/facebook-login', [
         id: user._id,
         name: user.name,
         email: user.email,
+        avatar: user.avatar || '',
+        originalAvatar: user.originalAvatar || '',
+        authType: user.authType,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       }
@@ -514,14 +594,117 @@ router.post('/logout', auth, async (req, res) => {
 router.get('/profile', auth, async (req, res) => {
   try {
     // req.user chứa userId từ token đã được middleware auth đính kèm
-    const user = await User.findById(req.user).select('-password'); // Không trả về mật khẩu
+    const user = await User.findById(req.user).select('-password -emailVerificationToken');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    res.json({ user });
+    
+    console.log('Profile GET - User avatar:', { 
+      hasAvatar: !!user.avatar, 
+      avatarLength: user.avatar?.length,
+      avatarPreview: user.avatar?.substring(0, 50) 
+    });
+    
+    res.json({ 
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar || '',
+        originalAvatar: user.originalAvatar || '',
+        authType: user.authType,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      }
+    });
   } catch (error) {
     console.error('Profile access error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update user profile (avatar, name)
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const { name, avatar } = req.body;
+    console.log('Profile update request:', { 
+      userId: req.user, 
+      hasName: !!name, 
+      hasAvatar: !!avatar,
+      avatarLength: avatar?.length 
+    });
+    
+    const user = await User.findById(req.user);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Cập nhật thông tin
+    if (name !== undefined) user.name = name;
+    if (avatar !== undefined) {
+      // Nếu avatar là empty string, khôi phục originalAvatar (nếu có)
+      if (avatar === '') {
+        if (user.originalAvatar && user.originalAvatar !== '') {
+          user.avatar = user.originalAvatar;
+          console.log('Avatar restored to original:', user.originalAvatar.substring(0, 50));
+        } else {
+          user.avatar = '';
+          console.log('Avatar removed (no original avatar)');
+        }
+      } 
+      // Nếu avatar là data URL, optimize nó
+      else if (avatar.startsWith('data:image/')) {
+        try {
+          console.log('Optimizing avatar with Sharp...');
+          const imageBuffer = base64ToBuffer(avatar);
+          
+          // Validate image
+          const isValid = await validateImage(imageBuffer);
+          if (!isValid) {
+            return res.status(400).json({ message: 'Invalid image format' });
+          }
+          
+          // Optimize to WebP
+          const optimizedAvatar = await optimizeAvatar(imageBuffer);
+          user.avatar = optimizedAvatar;
+          console.log('Avatar optimized successfully');
+        } catch (error) {
+          console.error('Avatar optimization error:', error);
+          return res.status(400).json({ message: 'Failed to process avatar image' });
+        }
+      }
+      // Nếu avatar là HTTP(S) URL, giữ nguyên
+      else if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+        user.avatar = avatar;
+        console.log('Avatar updated successfully');
+      } else {
+        console.error('Invalid avatar format');
+        return res.status(400).json({ message: 'Invalid avatar format' });
+      }
+    }
+    
+    await user.save();
+    console.log('User saved successfully');
+    
+    // Trả về user đã cập nhật (không bao gồm password)
+    const updatedUser = await User.findById(req.user).select('-password -emailVerificationToken');
+    console.log('Returning updated user with avatar length:', updatedUser.avatar?.length);
+    
+    res.json({ 
+      user: {
+        id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        avatar: updatedUser.avatar || '',
+        originalAvatar: updatedUser.originalAvatar || '',
+        authType: updatedUser.authType,
+        createdAt: updatedUser.createdAt,
+        updatedAt: updatedUser.updatedAt,
+      }
+    });
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 

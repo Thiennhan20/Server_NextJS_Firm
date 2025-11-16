@@ -25,6 +25,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  originalAvatar: {
+    type: String,
+    default: '',
+    // Avatar gốc từ Google/Facebook, không thay đổi
+  },
   authType: {
     type: String,
     required: true,

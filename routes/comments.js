@@ -136,8 +136,6 @@ router.post('/', [
       movieId: parseInt(movieId),
       type,
       userId,
-      username: user.name,
-      avatar: user.avatar || '',
       content: content.trim(),
       parentId: parentId || null
     });

@@ -10,6 +10,7 @@ const initializeWebSocket = require('./websocket');
 const authRoutes = require('./routes/auth');
 const commentRoutes = require('./routes/comments');
 const recentlyWatchedRoutes = require('./routes/recentlyWatched');
+const avatarProxyRoutes = require('./routes/avatarProxy');
 
 const app = express();
 // Security middleware
@@ -46,7 +47,9 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
 app.use(cors(corsOptions));
-app.use(express.json());
+// Increase body size limit for avatar uploads (base64 images)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI, {
@@ -72,6 +75,7 @@ mongoose.connection.on('reconnected', () => {
 app.use('/api/auth', authRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/recently-watched', recentlyWatchedRoutes);
+app.use('/api/avatar', avatarProxyRoutes);
 
 // Tạo HTTP server
 const server = http.createServer(app);
