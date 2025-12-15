@@ -54,7 +54,8 @@ const userSchema = new mongoose.Schema({
     {
       id: { type: Number, required: true },
       title: { type: String, required: true },
-      poster_path: { type: String, required: true }
+      poster_path: { type: String, required: true },
+      type: { type: String, enum: ['movie', 'tv'], default: 'movie' }
     }
   ],
   createdAt: {

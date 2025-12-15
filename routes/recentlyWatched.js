@@ -119,21 +119,6 @@ router.post('/', auth, async (req, res) => {
     const errors = validateUpsert(req.body);
     if (errors.length) return res.status(400).json({ code: 'VALIDATION_ERROR', errors });
 
-    // If very close to end, delete the record instead of saving
-    if (duration && duration > 0 && duration - currentTime <= 240) {
-      await WatchProgress.deleteOne({
-        userId: req.user,
-        contentId,
-        isTVShow,
-        season,
-        episode,
-        server,
-        audio,
-      });
-      cacheStore.delete(String(req.user));
-      return res.json({ removed: true });
-    }
-
     const filter = { userId: req.user, contentId, isTVShow, season, episode, server, audio };
     const update = {
       $set: {

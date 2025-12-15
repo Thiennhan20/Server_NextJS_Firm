@@ -20,8 +20,6 @@ async function downloadAndOptimizeAvatar(avatarUrl) {
     if (!avatarUrl || !avatarUrl.startsWith('http')) {
       return avatarUrl;
     }
-
-    console.log('Downloading avatar from:', avatarUrl.substring(0, 50));
     
     // Download avatar
     const response = await axios.get(avatarUrl, {
@@ -34,11 +32,9 @@ async function downloadAndOptimizeAvatar(avatarUrl) {
 
     // Optimize with Sharp
     const optimized = await optimizeAvatar(Buffer.from(response.data));
-    console.log('Avatar downloaded and optimized successfully');
     
     return optimized; // Returns base64 WebP
-  } catch (error) {
-    console.error('Failed to download/optimize avatar:', error.message);
+  } catch {
     // Return original URL as fallback
     return avatarUrl;
   }
@@ -358,7 +354,6 @@ router.post('/google-login', [
           // Download và optimize avatar
           const optimizedAvatar = await downloadAndOptimizeAvatar(avatar);
           user.originalAvatar = optimizedAvatar;
-          console.log('Original avatar cached as base64');
         }
         
         // Chỉ cập nhật avatar nếu user chưa upload custom avatar
@@ -425,8 +420,7 @@ router.post('/google-login', [
         updatedAt: user.updatedAt,
       }
     });
-  } catch (err) {
-    console.error('Google login error:', err);
+  } catch {
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -484,7 +478,6 @@ router.post('/facebook-login', [
           // Download và optimize avatar
           const optimizedAvatar = await downloadAndOptimizeAvatar(avatar);
           user.originalAvatar = optimizedAvatar;
-          console.log('Original avatar cached as base64');
         }
         
         // Chỉ cập nhật avatar nếu user chưa upload custom avatar
@@ -552,12 +545,6 @@ router.post('/facebook-login', [
       }
     });
   } catch (err) {
-    console.error('Facebook login error:', err);
-    console.error('Error details:', {
-      message: err.message,
-      stack: err.stack,
-      response: err.response?.data
-    });
     res.status(500).json({ 
       message: 'Server error',
       error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
@@ -599,12 +586,6 @@ router.get('/profile', auth, async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
     
-    console.log('Profile GET - User avatar:', { 
-      hasAvatar: !!user.avatar, 
-      avatarLength: user.avatar?.length,
-      avatarPreview: user.avatar?.substring(0, 50) 
-    });
-    
     res.json({ 
       user: {
         id: user._id,
@@ -617,8 +598,7 @@ router.get('/profile', auth, async (req, res) => {
         updatedAt: user.updatedAt,
       }
     });
-  } catch (error) {
-    console.error('Profile access error:', error);
+  } catch {
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -627,12 +607,6 @@ router.get('/profile', auth, async (req, res) => {
 router.put('/profile', auth, async (req, res) => {
   try {
     const { name, avatar } = req.body;
-    console.log('Profile update request:', { 
-      userId: req.user, 
-      hasName: !!name, 
-      hasAvatar: !!avatar,
-      avatarLength: avatar?.length 
-    });
     
     const user = await User.findById(req.user);
     if (!user) {
@@ -646,16 +620,13 @@ router.put('/profile', auth, async (req, res) => {
       if (avatar === '') {
         if (user.originalAvatar && user.originalAvatar !== '') {
           user.avatar = user.originalAvatar;
-          console.log('Avatar restored to original:', user.originalAvatar.substring(0, 50));
         } else {
           user.avatar = '';
-          console.log('Avatar removed (no original avatar)');
         }
       } 
       // Nếu avatar là data URL, optimize nó
       else if (avatar.startsWith('data:image/')) {
         try {
-          console.log('Optimizing avatar with Sharp...');
           const imageBuffer = base64ToBuffer(avatar);
           
           // Validate image
@@ -667,28 +638,22 @@ router.put('/profile', auth, async (req, res) => {
           // Optimize to WebP
           const optimizedAvatar = await optimizeAvatar(imageBuffer);
           user.avatar = optimizedAvatar;
-          console.log('Avatar optimized successfully');
-        } catch (error) {
-          console.error('Avatar optimization error:', error);
+        } catch {
           return res.status(400).json({ message: 'Failed to process avatar image' });
         }
       }
       // Nếu avatar là HTTP(S) URL, giữ nguyên
       else if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
         user.avatar = avatar;
-        console.log('Avatar updated successfully');
       } else {
-        console.error('Invalid avatar format');
         return res.status(400).json({ message: 'Invalid avatar format' });
       }
     }
     
     await user.save();
-    console.log('User saved successfully');
     
     // Trả về user đã cập nhật (không bao gồm password)
     const updatedUser = await User.findById(req.user).select('-password -emailVerificationToken');
-    console.log('Returning updated user with avatar length:', updatedUser.avatar?.length);
     
     res.json({ 
       user: {
@@ -703,7 +668,6 @@ router.put('/profile', auth, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Profile update error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -769,7 +733,7 @@ router.get('/check-email-verified', async (req, res) => {
 // Thêm phim vào watchlist
 router.post('/watchlist', auth, async (req, res) => {
   try {
-    const { id, title, poster_path } = req.body;
+    const { id, title, poster_path, type } = req.body;
     if (!id || !title || !poster_path) {
       return res.status(400).json({ message: 'Missing movie information' });
     }
@@ -779,7 +743,7 @@ router.post('/watchlist', auth, async (req, res) => {
     if (user.watchlist.some(m => m.id === id)) {
       return res.status(400).json({ message: 'Movie already in watchlist' });
     }
-    user.watchlist.push({ id, title, poster_path });
+    user.watchlist.push({ id, title, poster_path, type: type || 'movie' });
     await user.save();
     res.json({ message: 'Added to watchlist', watchlist: user.watchlist });
   } catch (err) {
