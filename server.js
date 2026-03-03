@@ -11,6 +11,7 @@ const authRoutes = require('./routes/auth');
 const commentRoutes = require('./routes/comments');
 const recentlyWatchedRoutes = require('./routes/recentlyWatched');
 const avatarProxyRoutes = require('./routes/avatarProxy');
+const tmdbRoutes = require('./routes/tmdb');
 
 const app = express();
 // Security middleware
@@ -76,6 +77,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/recently-watched', recentlyWatchedRoutes);
 app.use('/api/avatar', avatarProxyRoutes);
+app.use('/api/tmdb', tmdbRoutes);
 
 // Tạo HTTP server
 const server = http.createServer(app);
@@ -85,7 +87,89 @@ initializeWebSocket(server);
 
 // Route cơ bản để kiểm tra server
 app.get('/', (req, res) => {
-    res.send('<h1>WebSocket Server is running</h1>');
+  res.send(`
+  <!DOCTYPE html>
+  <html lang="vi">
+  <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>NHAN</title>
+      <style>
+          body {
+              margin: 0;
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              background: linear-gradient(135deg, #1e3c72, #2a5298);
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              color: white;
+          }
+
+          .card {
+              background: rgba(255, 255, 255, 0.1);
+              backdrop-filter: blur(10px);
+              padding: 40px;
+              border-radius: 16px;
+              text-align: center;
+              box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+              width: 400px;
+          }
+
+          h1 {
+              margin-bottom: 10px;
+              font-size: 28px;
+          }
+
+          h2 {
+              margin-top: 0;
+              font-weight: 400;
+              font-size: 18px;
+              opacity: 0.9;
+          }
+
+          .info {
+              margin-top: 25px;
+              font-size: 16px;
+              line-height: 1.8;
+          }
+
+          .badge {
+              display: inline-block;
+              padding: 6px 12px;
+              margin-top: 15px;
+              border-radius: 20px;
+              background: #00c6ff;
+              color: #000;
+              font-weight: bold;
+              font-size: 14px;
+          }
+
+          .footer {
+              margin-top: 20px;
+              font-size: 13px;
+              opacity: 0.7;
+          }
+      </style>
+  </head>
+  <body>
+      <div class="card">
+          <h1>🚀Server</h1>
+
+          <div class="badge">Server Status: ONLINE ✅</div>
+
+          <div class="info">
+              📧 Email: <strong>nhanntn2203@gmail.com</strong><br/>
+              📱 Phone: <strong>0388 875 120</strong><br/>
+          </div>
+
+          <div class="footer">
+              © ${new Date().getFullYear()} NHAN. All rights reserved.
+          </div>
+      </div>
+  </body>
+  </html>
+  `);
 });
 
 // Lấy trạng thái của server
@@ -113,5 +197,5 @@ app.get('/health', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 }); 

@@ -8,9 +8,8 @@ const BlacklistedToken = require('../models/BlacklistedToken');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const Brevo = require('@getbrevo/brevo');
-const brevo = new Brevo.TransactionalEmailsApi();
-brevo.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY || '');
+const { BrevoClient } = require('@getbrevo/brevo');
+const brevo = new BrevoClient({ apiKey: process.env.BREVO_API_KEY || '' });
 const axios = require('axios');
 const { optimizeAvatar, base64ToBuffer, validateImage } = require('../utils/avatarOptimizer');
 
@@ -20,7 +19,7 @@ async function downloadAndOptimizeAvatar(avatarUrl) {
     if (!avatarUrl || !avatarUrl.startsWith('http')) {
       return avatarUrl;
     }
-    
+
     // Download avatar
     const response = await axios.get(avatarUrl, {
       responseType: 'arraybuffer',
@@ -32,7 +31,7 @@ async function downloadAndOptimizeAvatar(avatarUrl) {
 
     // Optimize with Sharp
     const optimized = await optimizeAvatar(Buffer.from(response.data));
-    
+
     return optimized; // Returns base64 WebP
   } catch {
     // Return original URL as fallback
@@ -75,23 +74,23 @@ router.post('/register', [
       return res.status(400).json({ errors: errors.array() });
     }
     const { name, email, password } = req.body;
-    
+
     // Check for existing email user (ONLY email auth type)
-    let user = await User.findOne({ 
-      email, 
+    let user = await User.findOne({
+      email,
       $or: [
         { authType: 'email' },
         { authType: { $exists: false } } // Legacy users
       ]
     });
-    
+
     if (user) {
       // If legacy user, update to email auth type
       if (!user.authType) {
         user.authType = 'email';
         await user.save();
       }
-      
+
       // Email user already exists - check verification status
       if (!user.isEmailVerified) {
         // Gửi lại email xác thực
@@ -100,11 +99,11 @@ router.post('/register', [
         await user.save();
         const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
 
-        const resendMail = new Brevo.SendSmtpEmail();
-        resendMail.to = [{ email }];
-        resendMail.sender = { email: process.env.BREVO_SENDER_EMAIL, name: process.env.BREVO_SENDER_NAME || 'Entertainment World' };
-        resendMail.subject = 'Entertainment World Account Email Verification Resend';
-        resendMail.htmlContent = `
+        await brevo.transactionalEmails.sendTransacEmail({
+          to: [{ email }],
+          sender: { email: process.env.BREVO_SENDER_EMAIL, name: process.env.BREVO_SENDER_NAME || 'Entertainment World' },
+          subject: 'Entertainment World Account Email Verification Resend',
+          htmlContent: `
             <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
               <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
                 
@@ -156,17 +155,17 @@ router.post('/register', [
                 This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
               </p>
             </div>
-          `;
-        await brevo.sendTransacEmail(resendMail);
+          `
+        });
         return res.status(200).json({
           message: 'This email has already been registered but not yet verified. A verification email has been resent, please check your inbox.'
         });
-        
+
       }
       // Email user already exists and verified - return error
       return res.status(400).json({ message: 'User already exists' });
     }
-    
+
     // No email user found - REGISTER (create new)
     const emailVerificationToken = crypto.randomBytes(32).toString('hex');
     user = new User({
@@ -182,11 +181,11 @@ router.post('/register', [
     // Gửi email xác thực bằng Brevo (HTTPS)
     const verifyUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
 
-    const mail = new Brevo.SendSmtpEmail();
-    mail.to = [{ email }];
-    mail.sender = { email: process.env.BREVO_SENDER_EMAIL, name: process.env.BREVO_SENDER_NAME || 'Entertainment World' };
-    mail.subject = 'Entertainment World Account Email Verification';
-    mail.htmlContent = `
+    await brevo.transactionalEmails.sendTransacEmail({
+      to: [{ email }],
+      sender: { email: process.env.BREVO_SENDER_EMAIL, name: process.env.BREVO_SENDER_NAME || 'Entertainment World' },
+      subject: 'Entertainment World Account Email Verification',
+      htmlContent: `
             <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
               <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
                 
@@ -238,8 +237,8 @@ router.post('/register', [
                 This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
               </p>
             </div>
-          `;
-    await brevo.sendTransacEmail(mail);
+          `
+    });
 
     return res.status(201).json({
       message: 'Registration successful! Please check your email to verify your account.',
@@ -260,20 +259,20 @@ router.post('/login', [
       return res.status(400).json({ errors: errors.array() });
     }
     const { email, password } = req.body;
-    
+
     // Check for existing email user (including legacy users without authType)
-    const user = await User.findOne({ 
-      email, 
+    const user = await User.findOne({
+      email,
       $or: [
         { authType: 'email' },
         { authType: { $exists: false } } // Legacy users
       ]
     });
-    
+
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
-    
+
     // If legacy user, update to email auth type
     if (!user.authType) {
       user.authType = 'email';
@@ -292,7 +291,7 @@ router.post('/login', [
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
-    
+
     res.json({
       token,
       user: {
@@ -338,15 +337,15 @@ router.post('/google-login', [
 
     // Check if Google user already exists (email + authType: 'google')
     let user = await User.findOne({ email, authType: 'google' });
-    
+
     if (user) {
       // Google user exists - LOGIN
-      
+
       // Update user info if needed
       if (name && user.name !== name) {
         user.name = name;
       }
-      
+
       // Cập nhật avatar và originalAvatar nếu cần
       if (avatar) {
         // Nếu chưa có originalAvatar hoặc vẫn là URL (chưa optimize)
@@ -355,7 +354,7 @@ router.post('/google-login', [
           const optimizedAvatar = await downloadAndOptimizeAvatar(avatar);
           user.originalAvatar = optimizedAvatar;
         }
-        
+
         // Chỉ cập nhật avatar nếu user chưa upload custom avatar
         if (!user.avatar || user.avatar === '' || user.avatar.startsWith('http')) {
           user.avatar = user.originalAvatar; // Use cached optimized version
@@ -386,7 +385,7 @@ router.post('/google-login', [
     // Google user doesn't exist - REGISTER (create new)
     // Download and optimize avatar first
     const optimizedAvatar = avatar ? await downloadAndOptimizeAvatar(avatar) : '';
-    
+
     user = await User.findOneAndUpdate(
       { email, authType: 'google' },
       {
@@ -431,7 +430,7 @@ router.post('/facebook-login', [
   body('userID').notEmpty().withMessage('Facebook user ID is required'),
 ], async (req, res) => {
   try {
-    
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -443,9 +442,9 @@ router.post('/facebook-login', [
     const facebookResponse = await axios.get(
       `https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${accessToken}`
     );
-    
+
     const facebookUser = facebookResponse.data;
-    
+
     if (!facebookUser || facebookUser.id !== userID) {
       return res.status(401).json({ message: 'Invalid Facebook token' });
     }
@@ -462,15 +461,15 @@ router.post('/facebook-login', [
 
     // Check if Facebook user already exists (email + authType: 'facebook')
     let user = await User.findOne({ email, authType: 'facebook' });
-    
+
     if (user) {
       // Facebook user exists - LOGIN
-      
+
       // Update user info if needed
       if (name && user.name !== name) {
         user.name = name;
       }
-      
+
       // Cập nhật avatar và originalAvatar nếu cần
       if (avatar) {
         // Nếu chưa có originalAvatar hoặc vẫn là URL (chưa optimize)
@@ -479,7 +478,7 @@ router.post('/facebook-login', [
           const optimizedAvatar = await downloadAndOptimizeAvatar(avatar);
           user.originalAvatar = optimizedAvatar;
         }
-        
+
         // Chỉ cập nhật avatar nếu user chưa upload custom avatar
         if (!user.avatar || user.avatar === '' || user.avatar.startsWith('http')) {
           user.avatar = user.originalAvatar; // Use cached optimized version
@@ -510,7 +509,7 @@ router.post('/facebook-login', [
     // Facebook user doesn't exist - REGISTER (create new)
     // Download and optimize avatar first
     const optimizedAvatar = avatar ? await downloadAndOptimizeAvatar(avatar) : '';
-    
+
     user = await User.findOneAndUpdate(
       { email, authType: 'facebook' },
       {
@@ -545,7 +544,7 @@ router.post('/facebook-login', [
       }
     });
   } catch (err) {
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Server error',
       error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
     });
@@ -585,8 +584,8 @@ router.get('/profile', auth, async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    
-    res.json({ 
+
+    res.json({
       user: {
         id: user._id,
         name: user.name,
@@ -607,12 +606,12 @@ router.get('/profile', auth, async (req, res) => {
 router.put('/profile', auth, async (req, res) => {
   try {
     const { name, avatar } = req.body;
-    
+
     const user = await User.findById(req.user);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    
+
     // Cập nhật thông tin
     if (name !== undefined) user.name = name;
     if (avatar !== undefined) {
@@ -623,18 +622,18 @@ router.put('/profile', auth, async (req, res) => {
         } else {
           user.avatar = '';
         }
-      } 
+      }
       // Nếu avatar là data URL, optimize nó
       else if (avatar.startsWith('data:image/')) {
         try {
           const imageBuffer = base64ToBuffer(avatar);
-          
+
           // Validate image
           const isValid = await validateImage(imageBuffer);
           if (!isValid) {
             return res.status(400).json({ message: 'Invalid image format' });
           }
-          
+
           // Optimize to WebP
           const optimizedAvatar = await optimizeAvatar(imageBuffer);
           user.avatar = optimizedAvatar;
@@ -649,13 +648,13 @@ router.put('/profile', auth, async (req, res) => {
         return res.status(400).json({ message: 'Invalid avatar format' });
       }
     }
-    
+
     await user.save();
-    
+
     // Trả về user đã cập nhật (không bao gồm password)
     const updatedUser = await User.findById(req.user).select('-password -emailVerificationToken');
-    
-    res.json({ 
+
+    res.json({
       user: {
         id: updatedUser._id,
         name: updatedUser.name,
@@ -678,8 +677,8 @@ router.get('/verify-email', async (req, res) => {
   if (!token || !email) {
     return res.status(400).json({ message: 'Missing token or email' });
   }
-  const user = await User.findOne({ 
-    email, 
+  const user = await User.findOne({
+    email,
     $or: [
       { authType: 'email' },
       { authType: { $exists: false } } // Legacy users
@@ -688,7 +687,7 @@ router.get('/verify-email', async (req, res) => {
   if (!user) {
     return res.status(400).json({ message: 'Invalid or expired token' });
   }
-  
+
   // If legacy user, update to email auth type
   if (!user.authType) {
     user.authType = 'email';
@@ -716,8 +715,8 @@ router.get('/check-email-verified', async (req, res) => {
   if (!email) {
     return res.status(400).json({ message: 'Missing email' });
   }
-  const user = await User.findOne({ 
-    email, 
+  const user = await User.findOne({
+    email,
     $or: [
       { authType: 'email' },
       { authType: { $exists: false } } // Legacy users
@@ -805,21 +804,21 @@ router.get('/users/:id', async (req, res) => {
 router.put('/users/:id', async (req, res) => {
   try {
     const { name, email, avatar, isEmailVerified, watchlist } = req.body;
-    
+
     const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    
+
     // Cập nhật thông tin
     if (name) user.name = name;
     if (email) user.email = email;
     if (avatar !== undefined) user.avatar = avatar;
     if (isEmailVerified !== undefined) user.isEmailVerified = isEmailVerified;
     if (watchlist !== undefined) user.watchlist = watchlist;
-    
+
     await user.save();
-    
+
     // Trả về user đã cập nhật (không bao gồm password)
     const updatedUser = await User.findById(req.params.id).select('-password -emailVerificationToken');
     res.json(updatedUser);
@@ -835,7 +834,7 @@ router.delete('/users/:id', async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    
+
     await User.findByIdAndDelete(req.params.id);
     res.json({ message: 'User deleted successfully' });
   } catch (err) {

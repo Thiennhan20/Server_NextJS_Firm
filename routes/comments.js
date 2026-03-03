@@ -14,6 +14,143 @@ const validateRequest = (req, res, next) => {
   next();
 };
 
+// GET /api/comments/top - Lấy top comments (most liked or most replied) for homepage
+router.get('/top', async (req, res) => {
+  try {
+    const { limit = 10, sortBy = 'likes' } = req.query;
+    const limitNum = Math.min(Math.max(parseInt(limit, 10), 1), 50);
+
+    // Build aggregation pipeline
+    const pipeline = [
+      // Only get top-level comments that are not deleted
+      { $match: { parentId: null, isDeleted: false } },
+
+      // Add reply count field
+      {
+        $addFields: {
+          replyCount: { $size: { $ifNull: ['$replies', []] } }
+        }
+      },
+
+      // Filter: must have at least 1 like OR 1 reply
+      {
+        $match: {
+          $or: [
+            { likes: { $gte: 1 } },
+            { replyCount: { $gte: 1 } }
+          ]
+        }
+      },
+
+      // Sort by likes or reply count
+      {
+        $sort: sortBy === 'replies'
+          ? { replyCount: -1, createdAt: -1 }
+          : { likes: -1, createdAt: -1 }
+      },
+
+      // Limit results
+      { $limit: limitNum },
+
+      // Lookup user info
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+
+      // Unwind user array
+      { $unwind: '$user' },
+
+      // Project final shape
+      {
+        $project: {
+          _id: 1,
+          movieId: 1,
+          type: 1,
+          content: 1,
+          likes: 1,
+          replyCount: 1,
+          createdAt: 1,
+          'user.name': 1,
+          'user.avatar': 1,
+          'user.isEmailVerified': 1
+        }
+      }
+    ];
+
+    const comments = await Comment.aggregate(pipeline);
+
+    res.json({
+      success: true,
+      data: comments
+    });
+  } catch (error) {
+    console.error('Get top comments error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/comments/recent - Lấy recent comments (newest across all movies) for homepage
+router.get('/recent', async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+    const limitNum = Math.min(Math.max(parseInt(limit, 10), 1), 50);
+
+    // Build aggregation pipeline for recent comments
+    const pipeline = [
+      // Only get top-level comments that are not deleted
+      { $match: { parentId: null, isDeleted: false } },
+
+      // Sort by creation date (newest first)
+      { $sort: { createdAt: -1 } },
+
+      // Limit results
+      { $limit: limitNum },
+
+      // Lookup user info
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+
+      // Unwind user array
+      { $unwind: '$user' },
+
+      // Project final shape
+      {
+        $project: {
+          _id: 1,
+          movieId: 1,
+          type: 1,
+          content: 1,
+          createdAt: 1,
+          'user.name': 1,
+          'user.avatar': 1,
+          'user.isEmailVerified': 1
+        }
+      }
+    ];
+
+    const comments = await Comment.aggregate(pipeline);
+
+    res.json({
+      success: true,
+      data: comments
+    });
+  } catch (error) {
+    console.error('Get recent comments error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // GET /api/comments/:movieId/:type - Lấy comments với phân trang, sort DB-side và batched replies
 router.get('/:movieId/:type', async (req, res) => {
   try {
@@ -65,9 +202,9 @@ router.get('/:movieId/:type', async (req, res) => {
     // Batched fetch of replies for current page comments
     const replies = topIds.length
       ? await Comment.find({ parentId: { $in: topIds }, isDeleted: false })
-          .populate('userId', 'name email avatar')
-          .sort({ createdAt: 1 })
-          .lean()
+        .populate('userId', 'name email avatar')
+        .sort({ createdAt: 1 })
+        .lean()
       : [];
 
     // Group replies by parentId
@@ -294,13 +431,13 @@ router.get('/:id/replies', async (req, res) => {
     const { id } = req.params;
     const userId = req.user; // From auth middleware if authenticated
 
-    const replies = await Comment.find({ 
-      parentId: id, 
-      isDeleted: false 
+    const replies = await Comment.find({
+      parentId: id,
+      isDeleted: false
     })
-    .populate('userId', 'name email avatar')
-    .sort({ createdAt: 1 })
-    .lean();
+      .populate('userId', 'name email avatar')
+      .sort({ createdAt: 1 })
+      .lean();
 
     const processedReplies = replies.map(reply => ({
       ...reply,
