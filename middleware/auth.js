@@ -26,6 +26,11 @@ const auth = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
     }
+
+    // Invalidate tokens issued before password was changed
+    if (user.passwordChangedAt && decoded.iat && decoded.iat * 1000 < user.passwordChangedAt.getTime()) {
+      return res.status(401).json({ message: 'Token has been invalidated' });
+    }
     
     req.user = decoded.userId; // Chỉ gán userId để tương thích với code hiện tại
     req.token = token; // Attach token to request (for logout later)

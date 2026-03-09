@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: function() {
+    required: function () {
       return this.authType === 'email';
     },
     minlength: 6
@@ -28,17 +28,17 @@ const userSchema = new mongoose.Schema({
   originalAvatar: {
     type: String,
     default: '',
-    // Avatar gốc từ Google/Facebook, không thay đổi
+    // Avatar gốc từ Google, không thay đổi
   },
   authType: {
     type: String,
     required: true,
-    enum: ['email', 'google', 'facebook'],
+    enum: ['email', 'google'],
     default: 'email'
   },
   providerId: {
     type: String,
-    required: function() {
+    required: function () {
       return this.authType !== 'email';
     }
   },
@@ -61,6 +61,10 @@ const userSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  passwordChangedAt: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true
@@ -71,12 +75,13 @@ const userSchema = new mongoose.Schema({
 // userSchema.index({ email: 1, authType: 1 }, { unique: true });
 
 // Hash password before saving (only for email auth type)
-userSchema.pre('save', async function(next) {
+userSchema.pre('save', async function (next) {
   if (!this.isModified('password') || this.authType !== 'email') return next();
-  
+
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
+    this.passwordChangedAt = new Date();
     next();
   } catch (error) {
     next(error);
@@ -84,7 +89,7 @@ userSchema.pre('save', async function(next) {
 });
 
 // Method to compare password (only for email auth type)
-userSchema.methods.comparePassword = async function(candidatePassword) {
+userSchema.methods.comparePassword = async function (candidatePassword) {
   if (this.authType !== 'email') {
     throw new Error('Password comparison only available for email authentication');
   }

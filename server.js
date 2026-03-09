@@ -12,6 +12,8 @@ const commentRoutes = require('./routes/comments');
 const recentlyWatchedRoutes = require('./routes/recentlyWatched');
 const avatarProxyRoutes = require('./routes/avatarProxy');
 const tmdbRoutes = require('./routes/tmdb');
+const server3Routes = require('./routes/nguonc');
+const server1Routes = require('./routes/phimapi');
 
 const app = express();
 // Security middleware
@@ -78,6 +80,8 @@ app.use('/api/comments', commentRoutes);
 app.use('/api/recently-watched', recentlyWatchedRoutes);
 app.use('/api/avatar', avatarProxyRoutes);
 app.use('/api/tmdb', tmdbRoutes);
+app.use('/api/server3', server3Routes);
+app.use('/api/server1', server1Routes);
 
 // Tạo HTTP server
 const server = http.createServer(app);
@@ -197,5 +201,14 @@ app.get('/health', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`
+    ╔════════════════════════════════════════════════════════╗
+    ║         🔒 SECURE STREAM SERVER v1.0.0                 ║
+    ╠════════════════════════════════════════════════════════╣
+    ║  Port:        ${PORT}                                     ║
+    ║  Encryption:  AES-256-GCM                              ║
+    ║  CORS:                                                 ║
+    ║  Rate Limit:                                           ║
+    ╚════════════════════════════════════════════════════════╝
+    `);
 }); 

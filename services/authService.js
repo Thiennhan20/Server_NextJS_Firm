@@ -1,0 +1,215 @@
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const axios = require('axios');
+const { BrevoClient } = require('@getbrevo/brevo');
+const brevo = new BrevoClient({ apiKey: process.env.BREVO_API_KEY || '' });
+const { optimizeAvatar } = require('../utils/avatarOptimizer');
+const { RateLimiterMemory } = require('rate-limiter-flexible');
+
+// Rate limiter: 5 requests per 10 minutes per IP
+const rateLimiter = new RateLimiterMemory({
+  points: 5,
+  duration: 600, // 10 minutes
+});
+
+// Helper function to download and optimize external avatar
+async function downloadAndOptimizeAvatar(avatarUrl) {
+  try {
+    if (!avatarUrl || !avatarUrl.startsWith('http')) {
+      return avatarUrl;
+    }
+
+    // Download avatar
+    const response = await axios.get(avatarUrl, {
+      responseType: 'arraybuffer',
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    // Optimize with Sharp
+    const optimized = await optimizeAvatar(Buffer.from(response.data));
+
+    return optimized; // Returns base64 WebP
+  } catch {
+    // Return original URL as fallback
+    return avatarUrl;
+  }
+}
+
+function createToken(userId) {
+  return jwt.sign(
+    { userId },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+}
+
+function formatUserResponse(user) {
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    avatar: user.avatar || '',
+    originalAvatar: user.originalAvatar || '',
+    authType: user.authType || 'email',
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+}
+
+function generateVerificationToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function buildVerifyUrl(token, email) {
+  return `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+}
+
+function buildVerificationEmailHtml(name, verifyUrl) {
+  return `
+            <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+              <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
+                
+                <!-- Content wrapper -->
+                <div style="position:relative;z-index:1;">
+                  
+                  <!-- Icon -->
+                  <div style="width:60px;height:60px;margin:0 auto 12px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
+                    <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='width:30px;height:30px;filter:brightness(0) invert(1);'/>
+                  </div>
+                  
+                  <!-- Heading -->
+                  <h1 style="color:#ffffff;margin:0 0 12px 0;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
+                    Welcome <span style="color:#ffd700; text-shadow: 0 0 8px rgba(255, 215, 0, 0.8), 0 0 15px rgba(255, 215, 0, 0.6);">${name}</span>!
+                  </h1>
+                  
+                  <!-- Description -->
+                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
+                    Thank you for registering with Entertainment World!
+                  </p>
+                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
+                    Please click the button below to verify your email address to complete your registration and start exploring.
+                  </p>
+
+                  <!-- Arrows -->
+                  <div style="margin-bottom: 20px; color: #ffffff;">
+                    <span style="display: block; margin: 0 auto;">▼</span>
+                    <span style="display: block; margin: 0 auto;">▼</span>
+                  </div>
+                  
+                  <!-- Button -->
+                  <a href="${verifyUrl}" style="display:inline-block;padding:12px 32px;background:#ffffff;color:#1e40af;font-weight:700;font-size:14px;border:2px solid #1e40af;border-radius:8px;text-decoration:none;box-shadow:0 6px 20px rgba(30, 64, 175, 0.4), inset 0 0 8px rgba(30, 64, 175, 0.3);transition:all 0.3s ease;letter-spacing:0.5px;">
+                    Verify Email Address
+                  </a>
+                  
+                  <!-- Divider -->
+                  <div style="height:1px;background:rgba(255,255,255,0.2);margin:16px auto;max-width:60%;"></div>
+                  
+                  <!-- Help text -->
+                  <p style="color:rgba(255,255,255,0.7);font-size:12px;margin:0;">
+                    Need help? Contact us or try signing up again.
+                  </p>
+                  
+                </div>
+              </div>
+              
+              <!-- Footer -->
+              <p style="text-align:center;color:#888;font-size:11px;margin-top:16px;line-height:1.4;">
+                This email was sent by Entertainment World. If you didn't request this verification, please ignore this email.
+              </p>
+            </div>
+          `;
+}
+
+async function sendVerificationEmail(email, name, verifyUrl, subject) {
+  await brevo.transactionalEmails.sendTransacEmail({
+    to: [{ email }],
+    sender: { email: process.env.BREVO_SENDER_EMAIL, name: process.env.BREVO_SENDER_NAME || 'Entertainment World' },
+    subject: subject || 'Entertainment World Account Email Verification',
+    htmlContent: buildVerificationEmailHtml(name, verifyUrl)
+  });
+}
+
+function buildPasswordResetEmailHtml(name, resetUrl) {
+  return `
+            <div style="max-width:600px;margin:0 auto;padding:20px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+              <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative;overflow:hidden;">
+                
+                <!-- Content wrapper -->
+                <div style="position:relative;z-index:1;">
+                  
+                  <!-- Icon -->
+                  <div style="width:60px;height:60px;margin:0 auto 12px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
+                    <img src='https://cdn-icons-png.flaticon.com/512/616/616490.png' alt='Film Reel' style='width:30px;height:30px;filter:brightness(0) invert(1);'/>
+                  </div>
+                  
+                  <!-- Heading -->
+                  <h1 style="color:#ffffff;margin:0 0 12px 0;font-size:24px;font-weight:700;letter-spacing:-0.5px;">
+                    Hi <span style="color:#ffd700; text-shadow: 0 0 8px rgba(255, 215, 0, 0.8), 0 0 15px rgba(255, 215, 0, 0.6);">${name || 'there'}</span>,
+                  </h1>
+                  
+                  <!-- Description -->
+                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
+                    We received a request to reset the password for your Entertainment World account.
+                  </p>
+                  <p style="color:rgba(255,255,255,0.95);font-size:14px;line-height:1.5;margin:0 0 20px 0;max-width:350px;margin-left:auto;margin-right:auto;">
+                    Click the button below to choose a new password. This link will expire in <strong>10 minutes</strong>.
+                  </p>
+
+                  <!-- Arrows -->
+                  <div style="margin-bottom: 20px; color: #ffffff;">
+                    <span style="display: block; margin: 0 auto;">▼</span>
+                    <span style="display: block; margin: 0 auto;">▼</span>
+                  </div>
+                  
+                  <!-- Button -->
+                  <a href="${resetUrl}" style="display:inline-block;padding:12px 32px;background:#ffffff;color:#1e40af;font-weight:700;font-size:14px;border:2px solid #1e40af;border-radius:8px;text-decoration:none;box-shadow:0 6px 20px rgba(30, 64, 175, 0.4), inset 0 0 8px rgba(30, 64, 175, 0.3);transition:all 0.3s ease;letter-spacing:0.5px;">
+                    Reset Password
+                  </a>
+                  
+                  <!-- Divider -->
+                  <div style="height:1px;background:rgba(255,255,255,0.2);margin:16px auto;max-width:60%;"></div>
+                  
+                  <!-- Help text -->
+                  <p style="color:rgba(255,255,255,0.7);font-size:12px;margin:0;">
+                    If you did not request a password reset, you can safely ignore this email.
+                  </p>
+                  
+                </div>
+              </div>
+              
+              <!-- Footer -->
+              <p style="text-align:center;color:#888;font-size:11px;margin-top:16px;line-height:1.4;">
+                This email was sent by Entertainment World. For security reasons, this reset link will expire shortly.
+              </p>
+            </div>
+          `;
+}
+
+async function sendPasswordResetEmail(email, name, resetUrl) {
+  await brevo.transactionalEmails.sendTransacEmail({
+    to: [{ email }],
+    sender: { email: process.env.BREVO_SENDER_EMAIL, name: process.env.BREVO_SENDER_NAME || 'Entertainment World' },
+    subject: 'Reset your Entertainment World password',
+    htmlContent: buildPasswordResetEmailHtml(name, resetUrl),
+  });
+}
+
+async function consumeRateLimit(ip) {
+  return rateLimiter.consume(ip);
+}
+
+module.exports = {
+  downloadAndOptimizeAvatar,
+  createToken,
+  formatUserResponse,
+  generateVerificationToken,
+  buildVerifyUrl,
+  sendVerificationEmail,
+  consumeRateLimit,
+  rateLimiter,
+  buildPasswordResetEmailHtml,
+  sendPasswordResetEmail,
+};

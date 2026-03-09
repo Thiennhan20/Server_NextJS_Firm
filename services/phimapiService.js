@@ -1,0 +1,28 @@
+const axios = require('axios');
+
+const PHIMAPI_BASE = 'https://phimapi.com';
+const TIMEOUT = 15000;
+
+async function proxyTmdbMovie(id) {
+    const response = await axios.get(`${PHIMAPI_BASE}/tmdb/movie/${encodeURIComponent(id)}`, { timeout: TIMEOUT });
+    return response.data;
+}
+
+async function searchPhimapi(keyword, year) {
+    let url = `${PHIMAPI_BASE}/v1/api/tim-kiem?keyword=${encodeURIComponent(keyword)}`;
+    if (year) url += `&year=${encodeURIComponent(year)}`;
+
+    const response = await axios.get(url, { timeout: TIMEOUT });
+    return response.data;
+}
+
+async function getDetail(slug) {
+    const response = await axios.get(`${PHIMAPI_BASE}/phim/${encodeURIComponent(slug)}`, { timeout: TIMEOUT });
+    return response.data;
+}
+
+module.exports = {
+    proxyTmdbMovie,
+    searchPhimapi,
+    getDetail
+};
