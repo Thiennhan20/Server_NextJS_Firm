@@ -21,7 +21,7 @@ function initializeWebSocket(server) {
             io.emit('user_list', Array.from(onlineUsers.values()));
             io.emit('chat_message', {
                 type: 'system',
-                content: `${username} đã tham gia phòng chat`,
+                content: `${username} joined the chat room`,
                 timestamp: new Date().toISOString()
             });
         });
@@ -60,7 +60,7 @@ function initializeWebSocket(server) {
                 io.emit('user_list', Array.from(onlineUsers.values()));
                 io.emit('chat_message', {
                     type: 'system',
-                    content: `${username} đã rời khỏi phòng chat`,
+                    content: `${username} left the chat room`,
                     timestamp: new Date().toISOString()
                 });
             }

@@ -31,7 +31,7 @@ const forgotPassword = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            return res.status(400).json({ message: 'Email không hợp lệ' });
+            return res.status(400).json({ message: 'Invalid email address' });
         }
 
         const rawEmail = req.body.email;
@@ -39,7 +39,7 @@ const forgotPassword = async (req, res) => {
         const ipAddress = req.ip || req.headers['x-forwarded-for'] || '';
 
         if (!email) {
-            return res.status(400).json({ message: 'Email không hợp lệ' });
+            return res.status(400).json({ message: 'Invalid email address' });
         }
 
         // Rate limit: max 3 reset requests per hour per email
@@ -50,7 +50,7 @@ const forgotPassword = async (req, res) => {
         });
 
         if (requestCount >= 3) {
-            return res.status(429).json({ message: 'Vui lòng chờ trước khi thử lại' });
+            return res.status(429).json({ message: 'Please wait before trying again' });
         }
 
         // Look up user with email auth type
@@ -95,18 +95,18 @@ const resetPassword = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            return res.status(400).json({ message: 'Yêu cầu không hợp lệ' });
+            return res.status(400).json({ message: 'Invalid request' });
         }
 
         const { email: rawEmail, token, newPassword, confirmPassword } = req.body;
         const email = typeof rawEmail === 'string' ? rawEmail.toLowerCase().trim() : '';
 
         if (!email) {
-            return res.status(400).json({ message: 'Email không hợp lệ' });
+            return res.status(400).json({ message: 'Invalid email address' });
         }
 
         if (newPassword !== confirmPassword) {
-            return res.status(400).json({ message: 'Xác nhận mật khẩu không khớp' });
+            return res.status(400).json({ message: 'Password confirmation does not match' });
         }
 
         // Password complexity: at least 8 chars, upper, lower, digit, special
@@ -117,28 +117,28 @@ const resetPassword = async (req, res) => {
         const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(newPassword);
 
         if (!(hasMinLength && hasUpper && hasLower && hasDigit && hasSpecial)) {
-            return res.status(400).json({ message: 'Mật khẩu không hợp lệ' });
+            return res.status(400).json({ message: 'Password does not meet complexity requirements' });
         }
 
         const tokenHash = crypto.createHash('sha256').update(String(token)).digest('hex');
         const resetRecord = await PasswordResetToken.findOne({ email, tokenHash });
 
         if (!resetRecord) {
-            return res.status(400).json({ message: 'Liên kết đã hết hiệu lực. Vui lòng thử lại' });
+            return res.status(400).json({ message: 'Link is invalid or expired. Please try again.' });
         }
 
         const now = new Date();
 
         if (resetRecord.usedAt) {
-            return res.status(400).json({ message: 'Liên kết đã được sử dụng' });
+            return res.status(400).json({ message: 'Link has already been used.' });
         }
 
         if (resetRecord.expiresAt <= now) {
-            return res.status(400).json({ message: 'Liên kết đã hết hiệu lực. Vui lòng thử lại' });
+            return res.status(400).json({ message: 'Link is invalid or expired. Please try again.' });
         }
 
         if (resetRecord.attempts >= 5) {
-            return res.status(400).json({ message: 'Quá số lần thử. Vui lòng yêu cầu mã mới' });
+            return res.status(400).json({ message: 'Too many attempts. Please request a new link.' });
         }
 
         // Load user
@@ -155,14 +155,14 @@ const resetPassword = async (req, res) => {
             // Increment attempts to prevent brute forcing tokens
             resetRecord.attempts += 1;
             await resetRecord.save();
-            return res.status(400).json({ message: 'Liên kết đã hết hiệu lực. Vui lòng thử lại' });
+            return res.status(400).json({ message: 'Link is invalid or expired. Please try again.' });
         }
 
         // Check new password is not same as old
         if (user.password) {
             const isSame = await bcrypt.compare(newPassword, user.password);
             if (isSame) {
-                return res.status(400).json({ message: 'Mật khẩu mới không được trùng mật khẩu cũ' });
+                return res.status(400).json({ message: 'New password must be different from the old password.' });
             }
         }
 
@@ -199,28 +199,28 @@ const checkResetToken = async (req, res) => {
         const email = typeof rawEmail === 'string' ? rawEmail.toLowerCase().trim() : '';
 
         if (!email || !token || typeof token !== 'string') {
-            return res.status(400).json({ message: 'Liên kết không hợp lệ hoặc đã hết hạn' });
+            return res.status(400).json({ message: 'Link is invalid or expired.' });
         }
 
         const tokenHash = crypto.createHash('sha256').update(String(token)).digest('hex');
         const resetRecord = await PasswordResetToken.findOne({ email, tokenHash });
 
         if (!resetRecord) {
-            return res.status(400).json({ message: 'Liên kết đã hết hiệu lực. Vui lòng thử lại' });
+            return res.status(400).json({ message: 'Link is invalid or expired. Please try again.' });
         }
 
         const now = new Date();
 
         if (resetRecord.usedAt) {
-            return res.status(400).json({ message: 'Liên kết đã được sử dụng' });
+            return res.status(400).json({ message: 'Link has already been used.' });
         }
 
         if (resetRecord.expiresAt <= now) {
-            return res.status(400).json({ message: 'Liên kết đã hết hiệu lực. Vui lòng thử lại' });
+            return res.status(400).json({ message: 'Link is invalid or expired. Please try again.' });
         }
 
         if (resetRecord.attempts >= 5) {
-            return res.status(400).json({ message: 'Quá số lần thử. Vui lòng yêu cầu mã mới' });
+            return res.status(400).json({ message: 'Too many attempts. Please request a new link.' });
         }
 
         return res.json({ valid: true });
