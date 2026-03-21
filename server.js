@@ -15,7 +15,7 @@ const tmdbRoutes = require('./routes/tmdb');
 const chatAIRoutes = require('./routes/chatAI');
 const server3Routes = require('./routes/nguonc');
 const server1Routes = require('./routes/phimapi');
-const roomRoutes = require('./routes/rooms');
+// const roomRoutes = require('./routes/rooms');
 
 const app = express();
 // Security middleware
