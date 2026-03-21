@@ -12,8 +12,10 @@ const commentRoutes = require('./routes/comments');
 const recentlyWatchedRoutes = require('./routes/recentlyWatched');
 const avatarProxyRoutes = require('./routes/avatarProxy');
 const tmdbRoutes = require('./routes/tmdb');
+const chatAIRoutes = require('./routes/chatAI');
 const server3Routes = require('./routes/nguonc');
 const server1Routes = require('./routes/phimapi');
+const roomRoutes = require('./routes/rooms');
 
 const app = express();
 // Security middleware
@@ -46,7 +48,7 @@ const corsOptions = {
   ],
   credentials: true,
   optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
 app.use(cors(corsOptions));
@@ -80,14 +82,17 @@ app.use('/api/comments', commentRoutes);
 app.use('/api/recently-watched', recentlyWatchedRoutes);
 app.use('/api/avatar', avatarProxyRoutes);
 app.use('/api/tmdb', tmdbRoutes);
+app.use('/api/chatai', chatAIRoutes);
 app.use('/api/server3', server3Routes);
 app.use('/api/server1', server1Routes);
+app.use('/api/rooms', roomRoutes);
 
 // Tạo HTTP server
 const server = http.createServer(app);
 
-// Khởi tạo WebSocket
-initializeWebSocket(server);
+// Khởi tạo WebSocket và lưu io instance để routes có thể emit events
+const io = initializeWebSocket(server);
+app.set('io', io);
 
 // Route cơ bản để kiểm tra server
 app.get('/', (req, res) => {

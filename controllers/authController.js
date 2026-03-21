@@ -606,11 +606,11 @@ const addToWatchlist = async (req, res) => {
         }
         const user = await User.findById(req.user);
         if (!user) return res.status(404).json({ message: 'User not found' });
-        // Kiểm tra trùng
-        if (user.watchlist.some(m => m.id === id)) {
+        // Kiểm tra trùng bằng cách convert cả 2 về String để phòng hờ Mobile App gửi string / Web App gửi number
+        if (user.watchlist.some(m => String(m.id) === String(id))) {
             return res.status(400).json({ message: 'Movie already in watchlist' });
         }
-        user.watchlist.push({ id, title, poster_path, type: type || 'movie' });
+        user.watchlist.push({ id: Number(id) || id, title, poster_path, type: type || 'movie' });
         await user.save();
         res.json({ message: 'Added to watchlist', watchlist: user.watchlist });
     } catch (err) {
@@ -625,7 +625,7 @@ const removeFromWatchlist = async (req, res) => {
         if (!id) return res.status(400).json({ message: 'Missing movie id' });
         const user = await User.findById(req.user);
         if (!user) return res.status(404).json({ message: 'User not found' });
-        user.watchlist = user.watchlist.filter(m => m.id !== id);
+        user.watchlist = user.watchlist.filter(m => String(m.id) !== String(id));
         await user.save();
         res.json({ message: 'Removed from watchlist', watchlist: user.watchlist });
     } catch (err) {
