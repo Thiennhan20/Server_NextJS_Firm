@@ -15,7 +15,7 @@ const tmdbRoutes = require('./routes/tmdb');
 const chatAIRoutes = require('./routes/chatAI');
 const server3Routes = require('./routes/nguonc');
 const server1Routes = require('./routes/phimapi');
-// const roomRoutes = require('./routes/rooms');
+const roomRoutes = require('./routes/rooms');
 
 const app = express();
 // Security middleware
@@ -85,7 +85,7 @@ app.use('/api/tmdb', tmdbRoutes);
 app.use('/api/chatai', chatAIRoutes);
 app.use('/api/server3', server3Routes);
 app.use('/api/server1', server1Routes);
-// app.use('/api/rooms', roomRoutes);
+app.use('/api/rooms', roomRoutes);
 
 // Tạo HTTP server
 const server = http.createServer(app);

@@ -3,8 +3,9 @@ node_modules/
 
 # Xóa đi nếu sử dụng và push lên github
 # Ignore config folder
-config/
+#config/
 
 # Ignore test files
 test-ping-only.js
 test-redis.js
+test-room-service.js
