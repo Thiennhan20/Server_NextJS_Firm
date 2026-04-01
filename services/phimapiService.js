@@ -8,6 +8,11 @@ async function proxyTmdbMovie(id) {
     return response.data;
 }
 
+async function proxyTmdbTV(id) {
+    const response = await axios.get(`${PHIMAPI_BASE}/tmdb/tv/${encodeURIComponent(id)}`, { timeout: TIMEOUT });
+    return response.data;
+}
+
 async function searchPhimapi(keyword, year) {
     let url = `${PHIMAPI_BASE}/v1/api/tim-kiem?keyword=${encodeURIComponent(keyword)}`;
     if (year) url += `&year=${encodeURIComponent(year)}`;
@@ -23,6 +28,7 @@ async function getDetail(slug) {
 
 module.exports = {
     proxyTmdbMovie,
+    proxyTmdbTV,
     searchPhimapi,
     getDetail
 };

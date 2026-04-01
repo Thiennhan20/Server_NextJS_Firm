@@ -16,6 +16,22 @@ const tmdbMovieLookup = async (req, res) => {
     }
 };
 
+// Proxy: TMDB TV lookup
+const tmdbTVLookup = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const data = await phimapiService.proxyTmdbTV(id);
+        res.json(data);
+    } catch (e) {
+        if (e.response) {
+            res.status(e.response.status).json(e.response.data);
+        } else {
+            console.error('Phimapi TMDB TV proxy error:', e.message);
+            res.status(500).json({ error: 'Proxy error' });
+        }
+    }
+};
+
 // Proxy: Search
 const search = async (req, res) => {
     try {
@@ -54,6 +70,7 @@ const getDetail = async (req, res) => {
 
 module.exports = {
     tmdbMovieLookup,
+    tmdbTVLookup,
     search,
     getDetail
 };

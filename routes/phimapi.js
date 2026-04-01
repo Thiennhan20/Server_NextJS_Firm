@@ -6,6 +6,10 @@ const phimapiController = require('../controllers/phimapiController');
 // GET /tmdb/movie/:id → https://phimapi.com/tmdb/movie/:id
 router.get('/tmdb/movie/:id', phimapiController.tmdbMovieLookup);
 
+// Proxy: TMDB TV lookup
+// GET /tmdb/tv/:id → https://phimapi.com/tmdb/tv/:id
+router.get('/tmdb/tv/:id', phimapiController.tmdbTVLookup);
+
 // Proxy: Search
 // GET /search?keyword=...&year=... → https://phimapi.com/v1/api/tim-kiem?keyword=...&year=...
 router.get('/search', phimapiController.search);
