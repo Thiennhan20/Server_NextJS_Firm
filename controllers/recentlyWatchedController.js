@@ -1,6 +1,12 @@
 const WatchProgress = require('../models/WatchProgress');
 const { setCache, getCache, invalidateCache, rateLimit, projectClean, validateUpsert } = require('../services/recentlyWatchedService');
 
+// Normalize server/audio to prevent duplicates from case/whitespace differences
+function normalizeField(val) {
+    if (!val || typeof val !== 'string') return val;
+    return val.toLowerCase().replace(/\s/g, '');
+}
+
 // Get list for current user (most recent first, limited)
 const getList = async (req, res) => {
     try {
@@ -9,17 +15,15 @@ const getList = async (req, res) => {
             return res.status(429).json({ code: 'RATE_LIMITED', message: 'Too many requests' });
         }
 
-        const { contentId, isTVShow, season, episode, server, audio } = req.query;
-        if (contentId && server && audio) {
-            // Return single item if filters provided
+        const { contentId, isTVShow, season, episode } = req.query;
+        if (contentId) {
+            // Return single item — only need content identity, not server/audio
             const filter = {
                 userId: req.user,
                 contentId,
                 isTVShow: isTVShow === 'true',
                 season: season ? Number(season) : null,
                 episode: episode ? Number(episode) : null,
-                server,
-                audio,
             };
             const item = await projectClean(WatchProgress.findOne(filter)).lean();
             return res.json({ item });
@@ -66,11 +70,19 @@ const upsertProgress = async (req, res) => {
         const errors = validateUpsert(req.body);
         if (errors.length) return res.status(400).json({ code: 'VALIDATION_ERROR', errors });
 
-        const filter = { userId: req.user, contentId, isTVShow, season, episode, server, audio };
+        // Normalize server/audio at backend (single source of truth)
+        const normServer = normalizeField(server);
+        const normAudio = normalizeField(audio);
+
+        // Filter only by content identity (not server/audio)
+        const filter = { userId: req.user, contentId, isTVShow, season, episode };
+
         const update = {
             $set: {
                 currentTime,
                 duration: duration || 0,
+                server: normServer,
+                audio: normAudio,
                 title,
                 poster,
                 lastWatched: new Date(),
@@ -90,11 +102,11 @@ const upsertProgress = async (req, res) => {
 // Delete an item
 const deleteItem = async (req, res) => {
     try {
-        const { contentId, isTVShow = false, season = null, episode = null, server, audio } = req.body || {};
-        if (!contentId || !server || !audio) {
-            return res.status(400).json({ code: 'VALIDATION_ERROR', errors: ['CONTENT_ID_REQUIRED', 'SERVER_REQUIRED', 'AUDIO_REQUIRED'] });
+        const { contentId, isTVShow = false, season = null, episode = null } = req.body || {};
+        if (!contentId) {
+            return res.status(400).json({ code: 'VALIDATION_ERROR', errors: ['CONTENT_ID_REQUIRED'] });
         }
-        await WatchProgress.deleteOne({ userId: req.user, contentId, isTVShow, season, episode, server, audio });
+        await WatchProgress.deleteOne({ userId: req.user, contentId, isTVShow, season, episode });
         invalidateCache(req.user);
         res.json({ ok: true });
     } catch (e) {
@@ -121,8 +133,6 @@ const batchDelete = async (req, res) => {
                     isTVShow: !!it.isTVShow,
                     season: it.isTVShow ? (it.season ?? null) : null,
                     episode: it.isTVShow ? (it.episode ?? null) : null,
-                    server: it.server,
-                    audio: it.audio,
                 }
             }
         }));
